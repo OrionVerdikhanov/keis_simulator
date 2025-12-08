@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Gift Fest</string>
+    <string name="game_title">GIFT FEST</string>
+    <string name="level">LVL</string>
+    <string name="energy">Energy</string>
+    <string name="coins">Coins</string>
+    <string name="get_gift">GET GIFT</string>
+    <string name="invite_friends">INVITE FRIENDS</string>
+    <string name="collection">Collection</string>
+    <string name="achievements">Achievements</string>
+    <string name="settings">Settings</string>
+    <string name="shop">Shop</string>
+    <string name="daily_reward">Daily Reward</string>
+    <string name="merge_hint">Merge same gifts to level up!</string>
+    <string name="no_energy">Not enough energy!</string>
+    <string name="congratulations">Congratulations!</string>
+    <string name="new_gift_unlocked">New gift unlocked!</string>
+    <string name="level_up">Level Up!</string>
+</resources>
