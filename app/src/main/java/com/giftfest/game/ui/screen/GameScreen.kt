@@ -7,6 +7,7 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -45,12 +46,15 @@ fun GameScreen(viewModel: GameViewModel) {
     var mergePopupData by remember { mutableStateOf(MergePopupData()) }
     var showOfflineRewardsDialog by remember { mutableStateOf(false) }
     var offlineRewardsData by remember { mutableStateOf(Triple(0L, 0, 0)) }
+    var showSellDialog by remember { mutableStateOf(false) }
+    var showSoldPopup by remember { mutableStateOf(false) }
+    var soldPopupData by remember { mutableStateOf(SoldPopupData()) }
 
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
             when (event) {
                 is GameEvent.ShowMessage -> snackbarMessage = event.message
-                is GameEvent.GiftSpawned -> { /* Animation handled in component */ }
+                is GameEvent.GiftSpawned -> { }
                 is GameEvent.MergeSuccess -> {
                     mergePopupData = MergePopupData(
                         expGained = event.expGained,
@@ -79,6 +83,16 @@ fun GameScreen(viewModel: GameViewModel) {
                 is GameEvent.OfflineRewards -> {
                     offlineRewardsData = Triple(event.coins, event.energy, event.minutes)
                     showOfflineRewardsDialog = true
+                }
+                is GameEvent.BoardFull -> {
+                    showSellDialog = true
+                }
+                is GameEvent.GiftSold -> {
+                    soldPopupData = SoldPopupData(event.coinsGained, event.giftLevel, event.spawnedNew)
+                    showSoldPopup = true
+                }
+                is GameEvent.PrestigeComplete -> {
+                    Toast.makeText(context, "♻️ Prestige ${event.newLevel}! +${event.pointsEarned} points!", Toast.LENGTH_LONG).show()
                 }
                 is GameEvent.Haptic -> {
                     vibrator?.let { v ->
@@ -114,8 +128,19 @@ fun GameScreen(viewModel: GameViewModel) {
             uiState.currentScreen == Screen.GAME -> MainGameContent(
                 uiState = uiState,
                 onCellClick = viewModel::selectCell,
+                onCellLongClick = { index ->
+                    val cell = uiState.board.getOrNull(index)
+                    if (cell?.gift != null) {
+                        showSellDialog = true
+                    }
+                },
                 onSpawnClick = viewModel::spawnGift,
-                onNavigate = viewModel::setCurrentScreen
+                onSellClick = { index ->
+                    viewModel.sellGift(index)
+                    showSellDialog = false
+                },
+                onNavigate = viewModel::setCurrentScreen,
+                getSellPrice = viewModel::getSellPrice
             )
             uiState.currentScreen == Screen.SHOP -> ShopScreen(
                 coins = uiState.coins,
@@ -138,6 +163,17 @@ fun GameScreen(viewModel: GameViewModel) {
                 highestGiftLevel = uiState.highestGiftLevel,
                 onBack = { viewModel.setCurrentScreen(Screen.GAME) }
             )
+            uiState.currentScreen == Screen.PRESTIGE -> PrestigeScreen(
+                playerLevel = uiState.playerLevel,
+                prestigeLevel = uiState.prestigeLevel,
+                prestigePoints = uiState.prestigePoints,
+                bonuses = uiState.permanentBonuses,
+                pointsPreview = viewModel.getPrestigePointsPreview(),
+                canPrestige = viewModel.canPrestige(),
+                onPrestige = viewModel::performPrestige,
+                onPurchaseUpgrade = viewModel::purchasePrestigeUpgrade,
+                onBack = { viewModel.setCurrentScreen(Screen.GAME) }
+            )
         }
 
         GameSnackbar(
@@ -158,12 +194,46 @@ fun GameScreen(viewModel: GameViewModel) {
             )
         }
 
+        AnimatedVisibility(
+            visible = showSoldPopup,
+            enter = scaleIn() + fadeIn(),
+            exit = scaleOut() + fadeOut(),
+            modifier = Modifier.align(Alignment.Center)
+        ) {
+            SoldSuccessPopup(
+                data = soldPopupData,
+                onDismiss = { showSoldPopup = false }
+            )
+        }
+
         if (showOfflineRewardsDialog) {
             OfflineRewardsDialog(
                 coins = offlineRewardsData.first,
                 energy = offlineRewardsData.second,
                 minutes = offlineRewardsData.third,
                 onDismiss = { showOfflineRewardsDialog = false }
+            )
+        }
+
+        if (showSellDialog && uiState.selectedCellIndex != null) {
+            val selectedCell = uiState.board.getOrNull(uiState.selectedCellIndex!!)
+            val gift = selectedCell?.gift
+            if (gift != null) {
+                SellGiftDialog(
+                    giftLevel = gift.displayLevel,
+                    sellPrice = viewModel.getSellPrice(uiState.selectedCellIndex!!),
+                    onSell = {
+                        viewModel.sellGift(uiState.selectedCellIndex!!)
+                        showSellDialog = false
+                    },
+                    onDismiss = { showSellDialog = false }
+                )
+            }
+        }
+
+        if (showSellDialog && uiState.isBoardFull && uiState.selectedCellIndex == null) {
+            BoardFullDialog(
+                onDismiss = { showSellDialog = false }
             )
         }
     }
@@ -187,8 +257,11 @@ private fun LoadingScreen() {
 private fun MainGameContent(
     uiState: GameUiState,
     onCellClick: (Int) -> Unit,
+    onCellLongClick: (Int) -> Unit,
     onSpawnClick: () -> Unit,
-    onNavigate: (Screen) -> Unit
+    onSellClick: (Int) -> Unit,
+    onNavigate: (Screen) -> Unit,
+    getSellPrice: (Int) -> Long
 ) {
     Column(
         modifier = Modifier
@@ -202,8 +275,10 @@ private fun MainGameContent(
             level = uiState.playerLevel,
             experience = uiState.experience,
             experienceToNextLevel = uiState.experienceToNextLevel,
+            prestigeLevel = uiState.prestigeLevel,
             onShopClick = { onNavigate(Screen.SHOP) },
-            onStatsClick = { onNavigate(Screen.STATS) }
+            onStatsClick = { onNavigate(Screen.STATS) },
+            onPrestigeClick = { onNavigate(Screen.PRESTIGE) }
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -253,7 +328,23 @@ private fun MainGameContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        // Sell button when cell is selected
+        AnimatedVisibility(
+            visible = uiState.selectedCellIndex != null &&
+                    uiState.board.getOrNull(uiState.selectedCellIndex!!)?.gift != null,
+            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut()
+        ) {
+            uiState.selectedCellIndex?.let { index ->
+                val sellPrice = getSellPrice(index)
+                SellButton(
+                    sellPrice = sellPrice,
+                    onClick = { onSellClick(index) }
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
 
         EnergyBar(
             energy = uiState.energy,
@@ -264,7 +355,8 @@ private fun MainGameContent(
         Spacer(modifier = Modifier.height(12.dp))
 
         BottomButtons(
-            canSpawn = uiState.energy >= GameState.SPAWN_ENERGY_COST,
+            canSpawn = uiState.energy >= GameState.SPAWN_ENERGY_COST && !uiState.isBoardFull,
+            isBoardFull = uiState.isBoardFull,
             isProcessing = uiState.isProcessing,
             onSpawnClick = onSpawnClick,
             onWheelClick = { onNavigate(Screen.WHEEL) }
@@ -281,8 +373,10 @@ private fun TopBar(
     level: Int,
     experience: Long,
     experienceToNextLevel: Long,
+    prestigeLevel: Int,
     onShopClick: () -> Unit,
-    onStatsClick: () -> Unit
+    onStatsClick: () -> Unit,
+    onPrestigeClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
@@ -290,7 +384,7 @@ private fun TopBar(
             .padding(horizontal = 12.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        LevelBadge(level = level)
+        LevelBadge(level = level, prestigeLevel = prestigeLevel, onClick = onPrestigeClick)
 
         Spacer(modifier = Modifier.width(8.dp))
 
@@ -339,7 +433,7 @@ private fun TopBar(
 }
 
 @Composable
-private fun LevelBadge(level: Int) {
+private fun LevelBadge(level: Int, prestigeLevel: Int, onClick: () -> Unit) {
     val infiniteTransition = rememberInfiniteTransition(label = "level")
     val glowAlpha by infiniteTransition.animateFloat(
         initialValue = 0.5f,
@@ -354,10 +448,12 @@ private fun LevelBadge(level: Int) {
     Box(
         modifier = Modifier
             .size(52.dp)
+            .clickable(onClick = onClick)
             .background(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        AccentGold.copy(alpha = glowAlpha * 0.3f),
+                        if (prestigeLevel > 0) AccentPurple.copy(alpha = glowAlpha * 0.4f)
+                        else AccentGold.copy(alpha = glowAlpha * 0.3f),
                         Color.Transparent
                     )
                 )
@@ -367,9 +463,18 @@ private fun LevelBadge(level: Int) {
         Box(
             modifier = Modifier
                 .size(48.dp)
+                .then(
+                    if (prestigeLevel > 0) {
+                        Modifier.border(2.dp, AccentPurple, CircleShape)
+                    } else Modifier
+                )
                 .background(
                     brush = Brush.linearGradient(
-                        colors = listOf(AccentGold, AccentOrange)
+                        colors = if (prestigeLevel > 0) {
+                            listOf(AccentPurple, AccentGold)
+                        } else {
+                            listOf(AccentGold, AccentOrange)
+                        }
                     ),
                     shape = CircleShape
                 ),
@@ -382,12 +487,21 @@ private fun LevelBadge(level: Int) {
                     fontWeight = FontWeight.Bold,
                     color = BackgroundDark
                 )
-                Text(
-                    text = "LVL",
-                    fontSize = 7.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = BackgroundDark.copy(alpha = 0.8f)
-                )
+                if (prestigeLevel > 0) {
+                    Text(
+                        text = "P$prestigeLevel",
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BackgroundDark.copy(alpha = 0.8f)
+                    )
+                } else {
+                    Text(
+                        text = "LVL",
+                        fontSize = 7.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = BackgroundDark.copy(alpha = 0.8f)
+                    )
+                }
             }
         }
     }
@@ -464,8 +578,47 @@ private fun ExperienceBar(
 }
 
 @Composable
+private fun SellButton(
+    sellPrice: Long,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Button(
+            onClick = onClick,
+            modifier = Modifier.height(44.dp),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = AccentOrange
+            ),
+            shape = RoundedCornerShape(12.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.Sell,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "SELL +$sellPrice",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = " 💰",
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+@Composable
 private fun BottomButtons(
     canSpawn: Boolean,
+    isBoardFull: Boolean,
     isProcessing: Boolean,
     onSpawnClick: () -> Unit,
     onWheelClick: () -> Unit
@@ -483,6 +636,7 @@ private fun BottomButtons(
 
         SpawnButton(
             enabled = canSpawn,
+            isBoardFull = isBoardFull,
             isProcessing = isProcessing,
             onClick = onSpawnClick,
             modifier = Modifier.weight(0.7f)
@@ -495,17 +649,6 @@ private fun WheelButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "wheel")
-    val rotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rotation"
-    )
-
     Button(
         onClick = onClick,
         modifier = modifier.height(56.dp),
@@ -524,6 +667,7 @@ private fun WheelButton(
 @Composable
 private fun SpawnButton(
     enabled: Boolean,
+    isBoardFull: Boolean,
     isProcessing: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -540,7 +684,7 @@ private fun SpawnButton(
             .height(56.dp)
             .scale(scale),
         colors = ButtonDefaults.buttonColors(
-            containerColor = ButtonPrimary,
+            containerColor = if (isBoardFull) AccentOrange else ButtonPrimary,
             disabledContainerColor = ButtonDisabled
         ),
         shape = RoundedCornerShape(16.dp)
@@ -550,6 +694,12 @@ private fun SpawnButton(
                 modifier = Modifier.size(24.dp),
                 color = Color.White,
                 strokeWidth = 2.dp
+            )
+        } else if (isBoardFull) {
+            Text(
+                text = "📦 BOARD FULL - SELL TO CONTINUE",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
             )
         } else {
             Text(
@@ -617,6 +767,47 @@ private fun MergeSuccessPopup(
 }
 
 @Composable
+private fun SoldSuccessPopup(
+    data: SoldPopupData,
+    onDismiss: () -> Unit
+) {
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1200)
+        onDismiss()
+    }
+
+    Card(
+        modifier = Modifier.padding(32.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = BackgroundCard
+        ),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = "💸 SOLD!",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = AccentOrange
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            RewardItem(icon = "💰", value = "+${data.coinsGained}", color = AccentGold)
+            Spacer(modifier = Modifier.height(8.dp))
+            if (data.spawnedNew) {
+                Text(
+                    text = "New gift spawned!",
+                    fontSize = 13.sp,
+                    color = AccentGreen
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun RewardItem(icon: String, value: String, color: Color) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(text = icon, fontSize = 16.sp)
@@ -673,12 +864,109 @@ private fun OfflineRewardsDialog(
     )
 }
 
+@Composable
+private fun SellGiftDialog(
+    giftLevel: Int,
+    sellPrice: Long,
+    onSell: () -> Unit,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BackgroundCard,
+        title = {
+            Text(
+                text = "💰 Sell Gift?",
+                fontWeight = FontWeight.Bold,
+                color = AccentOrange
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Sell this Level $giftLevel gift?",
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "You'll receive +$sellPrice coins",
+                    color = AccentGold,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "A new Level 1 gift will spawn",
+                    color = TextSecondary,
+                    fontSize = 12.sp
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onSell,
+                colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
+            ) {
+                Text("Sell!")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel", color = TextSecondary)
+            }
+        }
+    )
+}
+
+@Composable
+private fun BoardFullDialog(
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BackgroundCard,
+        title = {
+            Text(
+                text = "📦 Board Full!",
+                fontWeight = FontWeight.Bold,
+                color = AccentOrange
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "Your board is full!",
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = "Tap a gift and use the SELL button to make room for new gifts.",
+                    color = TextSecondary
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary)
+            ) {
+                Text("Got it!")
+            }
+        }
+    )
+}
+
 data class MergePopupData(
     val expGained: Long = 0,
     val coinsGained: Long = 0,
     val gemsGained: Int = 0,
     val newLevel: Int = 0,
     val combo: Int = 1
+)
+
+data class SoldPopupData(
+    val coinsGained: Long = 0,
+    val giftLevel: Int = 0,
+    val spawnedNew: Boolean = false
 )
 
 private fun formatNumber(number: Long): String {

@@ -67,6 +67,14 @@ class GameViewModel(
                         activeQuests = state.activeQuests,
                         statistics = state.statistics,
                         freeSpinsAvailable = state.freeSpinsAvailable,
+                        prestigeLevel = state.prestigeLevel,
+                        prestigePoints = state.prestigePoints,
+                        permanentBonuses = state.permanentBonuses,
+                        seasonPoints = state.seasonPoints,
+                        seasonLevel = state.seasonLevel,
+                        calendarDay = state.calendarDay,
+                        calendarClaimed = state.calendarClaimed,
+                        isBoardFull = state.board.none { !it.isLocked && it.gift == null },
                         isLoading = false
                     )
                 }
@@ -75,7 +83,6 @@ class GameViewModel(
     }
 
     private fun startBackgroundJobs() {
-        // Energy regeneration
         energyRegenJob?.cancel()
         energyRegenJob = viewModelScope.launch {
             while (true) {
@@ -88,7 +95,6 @@ class GameViewModel(
             }
         }
 
-        // Fever mode check
         feverCheckJob?.cancel()
         feverCheckJob = viewModelScope.launch {
             while (true) {
@@ -100,7 +106,6 @@ class GameViewModel(
             }
         }
 
-        // Combo timeout check
         comboCheckJob?.cancel()
         comboCheckJob = viewModelScope.launch {
             while (true) {
@@ -129,7 +134,6 @@ class GameViewModel(
         val state = _uiState.value
         val now = System.currentTimeMillis()
 
-        // Energy timer
         if (state.energy < state.maxEnergy) {
             val timeSinceRegen = now - state.lastEnergyRegenTime
             val timeToNextEnergy = GameState.ENERGY_REGEN_TIME_MS - timeSinceRegen
@@ -138,13 +142,11 @@ class GameViewModel(
             _uiState.update { it.copy(timeToNextEnergy = 0) }
         }
 
-        // Fever timer
         if (state.isFeverActive) {
             val feverTimeLeft = (state.feverEndTime - now).coerceAtLeast(0)
             _uiState.update { it.copy(feverTimeLeft = feverTimeLeft) }
         }
 
-        // Booster timers
         val activeBoostersWithTime = state.activeBoosters.map { booster ->
             booster to (booster.expiresAt - now).coerceAtLeast(0)
         }
@@ -179,7 +181,8 @@ class GameViewModel(
                     _events.emit(GameEvent.ShowMessage("Not enough energy!"))
                 }
                 is SpawnResult.BoardFull -> {
-                    _events.emit(GameEvent.ShowMessage("Board is full! Merge some gifts."))
+                    _events.emit(GameEvent.BoardFull)
+                    _events.emit(GameEvent.ShowMessage("Board full! Sell a gift to continue"))
                 }
                 is SpawnResult.Error -> {
                     _events.emit(GameEvent.ShowMessage(result.message))
@@ -187,6 +190,104 @@ class GameViewModel(
             }
 
             _uiState.update { it.copy(isProcessing = false) }
+        }
+    }
+
+    /**
+     * Sell a gift and spawn a new level 1 gift in its place
+     */
+    fun sellGift(cellIndex: Int) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isProcessing = true, selectedCellIndex = null) }
+
+            when (val result = gameUseCase.sellGift(cellIndex, spawnNew = true)) {
+                is SellResult.Success -> {
+                    _events.emit(GameEvent.Haptic(HapticType.MEDIUM))
+                    _events.emit(
+                        GameEvent.GiftSold(
+                            coinsGained = result.coinsGained,
+                            giftLevel = result.giftLevel,
+                            spawnedNew = result.spawnedNew != null
+                        )
+                    )
+                }
+                is SellResult.Error -> {
+                    _events.emit(GameEvent.ShowMessage(result.message))
+                }
+            }
+
+            _uiState.update { it.copy(isProcessing = false) }
+        }
+    }
+
+    /**
+     * Get the sell price for a specific cell
+     */
+    fun getSellPrice(cellIndex: Int): Long {
+        val cell = _uiState.value.board.getOrNull(cellIndex) ?: return 0
+        val gift = cell.gift ?: return 0
+        return gift.getSellPrice(_uiState.value.permanentBonuses.sellPriceBonus)
+    }
+
+    /**
+     * Perform prestige reset
+     */
+    fun performPrestige() {
+        viewModelScope.launch {
+            when (val result = gameUseCase.performPrestige()) {
+                is PrestigeResult.Success -> {
+                    _events.emit(GameEvent.Haptic(HapticType.HEAVY))
+                    _events.emit(
+                        GameEvent.PrestigeComplete(
+                            newLevel = result.newPrestigeLevel,
+                            pointsEarned = result.pointsEarned,
+                            totalPoints = result.totalPoints
+                        )
+                    )
+                }
+                is PrestigeResult.NotEligible -> {
+                    _events.emit(
+                        GameEvent.ShowMessage(
+                            "Reach level ${result.requiredLevel} to prestige (current: ${result.currentLevel})"
+                        )
+                    )
+                }
+                is PrestigeResult.Error -> {
+                    _events.emit(GameEvent.ShowMessage(result.message))
+                }
+            }
+        }
+    }
+
+    /**
+     * Purchase a prestige upgrade
+     */
+    fun purchasePrestigeUpgrade(upgrade: PrestigeUpgrade) {
+        viewModelScope.launch {
+            when (val result = gameUseCase.purchasePrestigeUpgrade(upgrade)) {
+                is PrestigeUpgradeResult.Success -> {
+                    _events.emit(GameEvent.Haptic(HapticType.MEDIUM))
+                    _events.emit(
+                        GameEvent.PrestigeUpgradePurchased(
+                            upgrade = upgrade,
+                            newLevel = result.newLevel
+                        )
+                    )
+                }
+                is PrestigeUpgradeResult.MaxLevel -> {
+                    _events.emit(GameEvent.ShowMessage("Already at max level!"))
+                }
+                is PrestigeUpgradeResult.NotEnoughPoints -> {
+                    _events.emit(
+                        GameEvent.ShowMessage(
+                            "Need ${result.required} points (have ${result.current})"
+                        )
+                    )
+                }
+                is PrestigeUpgradeResult.Error -> {
+                    _events.emit(GameEvent.ShowMessage(result.message))
+                }
+            }
         }
     }
 
@@ -204,6 +305,7 @@ class GameViewModel(
                     is UnlockRequirement.Coins -> "Need ${requirement.amount} coins to unlock"
                     is UnlockRequirement.Gems -> "Need ${requirement.amount} gems to unlock"
                     is UnlockRequirement.Merges -> "Perform ${requirement.count} merges to unlock"
+                    is UnlockRequirement.Prestige -> "Prestige ${requirement.level} times to unlock"
                     null -> "This cell is locked"
                 }
                 _events.emit(GameEvent.ShowMessage(message))
@@ -216,11 +318,9 @@ class GameViewModel(
         if (selectedIndex == null) {
             if (cell.gift != null) {
                 _uiState.update { it.copy(selectedCellIndex = index) }
-                // Vibrate on selection
                 viewModelScope.launch { _events.emit(GameEvent.Haptic(HapticType.LIGHT)) }
             }
         } else if (selectedIndex == index) {
-            // Double tap on special gift - use ability
             if (cell.gift?.isSpecial == true) {
                 useSpecialGift(index)
             } else {
@@ -261,7 +361,6 @@ class GameViewModel(
     }
 
     private fun canMerge(gift1: CellGift, gift2: CellGift): Boolean {
-        // Rainbow can merge with anything
         if (gift1.specialType == SpecialGiftType.RAINBOW || gift2.specialType == SpecialGiftType.RAINBOW) {
             return true
         }
@@ -281,7 +380,8 @@ class GameViewModel(
                             expGained = result.expGained,
                             coinsGained = result.coinsGained,
                             gemsGained = result.gemsGained,
-                            combo = result.combo
+                            combo = result.combo,
+                            seasonPoints = result.seasonPoints
                         )
                     )
 
@@ -295,7 +395,6 @@ class GameViewModel(
                         _events.emit(GameEvent.Haptic(HapticType.HEAVY))
                     }
 
-                    // High combo celebration
                     if (result.combo >= 5) {
                         _events.emit(GameEvent.ComboMilestone(result.combo))
                     }
@@ -359,7 +458,7 @@ class GameViewModel(
                 }
             }
 
-            delay(2000) // Animation time
+            delay(2000)
             _uiState.update { it.copy(isSpinning = false) }
         }
     }
@@ -416,6 +515,18 @@ class GameViewModel(
         _uiState.update { it.copy(selectedCellIndex = null) }
     }
 
+    fun canPrestige(): Boolean {
+        return _uiState.value.playerLevel >= GameState.PRESTIGE_LEVEL_REQUIREMENT
+    }
+
+    fun getPrestigePointsPreview(): Int {
+        val state = _uiState.value
+        if (state.playerLevel < GameState.PRESTIGE_LEVEL_REQUIREMENT) return 0
+        val basePoints = state.playerLevel - GameState.PRESTIGE_LEVEL_REQUIREMENT + 10
+        val bonusPoints = (state.totalMerges / 100) + (state.highestGiftLevel * 2)
+        return basePoints + bonusPoints
+    }
+
     override fun onCleared() {
         super.onCleared()
         energyRegenJob?.cancel()
@@ -434,7 +545,7 @@ class GameViewModel(
 }
 
 enum class Screen {
-    GAME, SHOP, WHEEL, STATS, QUESTS
+    GAME, SHOP, WHEEL, STATS, QUESTS, PRESTIGE
 }
 
 enum class HapticType {
@@ -485,6 +596,22 @@ data class GameUiState(
     val freeSpinsAvailable: Int = 1,
     val isSpinning: Boolean = false,
 
+    // Prestige
+    val prestigeLevel: Int = 0,
+    val prestigePoints: Int = 0,
+    val permanentBonuses: PermanentBonuses = PermanentBonuses(),
+
+    // Season
+    val seasonPoints: Int = 0,
+    val seasonLevel: Int = 1,
+
+    // Calendar
+    val calendarDay: Int = 1,
+    val calendarClaimed: Boolean = false,
+
+    // Board state
+    val isBoardFull: Boolean = false,
+
     // UI State
     val currentScreen: Screen = Screen.GAME,
     val isLoading: Boolean = true,
@@ -495,7 +622,7 @@ sealed class GameEvent {
     data class ShowMessage(val message: String) : GameEvent()
     data class GiftSpawned(val cellIndex: Int, val isSpecial: Boolean = false, val specialType: SpecialGiftType? = null) : GameEvent()
     data class GiftMoved(val fromIndex: Int, val toIndex: Int) : GameEvent()
-    data class MergeSuccess(val newLevel: Int, val expGained: Long, val coinsGained: Long, val gemsGained: Int = 0, val combo: Int = 1) : GameEvent()
+    data class MergeSuccess(val newLevel: Int, val expGained: Long, val coinsGained: Long, val gemsGained: Int = 0, val combo: Int = 1, val seasonPoints: Int = 0) : GameEvent()
     data class LevelUp(val newLevel: Int) : GameEvent()
     data class DailyRewardClaimed(val streak: Int, val coins: Long, val energy: Int, val gems: Int = 0) : GameEvent()
     data class EnergyRegenerated(val amount: Int) : GameEvent()
@@ -507,4 +634,8 @@ sealed class GameEvent {
     data class BoosterActivated(val type: BoosterType) : GameEvent()
     data class OfflineRewards(val coins: Long, val energy: Int, val minutes: Int) : GameEvent()
     data class Haptic(val type: HapticType) : GameEvent()
+    data object BoardFull : GameEvent()
+    data class GiftSold(val coinsGained: Long, val giftLevel: Int, val spawnedNew: Boolean) : GameEvent()
+    data class PrestigeComplete(val newLevel: Int, val pointsEarned: Int, val totalPoints: Int) : GameEvent()
+    data class PrestigeUpgradePurchased(val upgrade: PrestigeUpgrade, val newLevel: Int) : GameEvent()
 }

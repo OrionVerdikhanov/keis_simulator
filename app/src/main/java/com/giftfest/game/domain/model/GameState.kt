@@ -1,14 +1,14 @@
 package com.giftfest.game.domain.model
 
 /**
- * Represents the current state of the game - Enhanced Version
+ * Represents the current state of the game - Enhanced Version with Prestige
  */
 data class GameState(
     val playerLevel: Int = 1,
     val experience: Long = 0,
     val experienceToNextLevel: Long = 100,
     val coins: Long = 100,
-    val gems: Int = 10, // Premium currency
+    val gems: Int = 10,
     val energy: Int = 50,
     val maxEnergy: Int = 50,
     val lastEnergyRegenTime: Long = System.currentTimeMillis(),
@@ -43,18 +43,108 @@ data class GameState(
 
     // Lucky wheel
     val lastWheelSpinTime: Long = 0,
-    val freeSpinsAvailable: Int = 1
+    val freeSpinsAvailable: Int = 1,
+
+    // === NEW: Prestige System ===
+    val prestigeLevel: Int = 0,
+    val prestigePoints: Int = 0,
+    val permanentBonuses: PermanentBonuses = PermanentBonuses(),
+
+    // === NEW: Milestones ===
+    val claimedMilestones: Set<String> = emptySet(),
+
+    // === NEW: Daily Calendar ===
+    val calendarDay: Int = 1,
+    val calendarClaimed: Boolean = false,
+
+    // === NEW: Collection Bonuses ===
+    val collectionBonusLevel: Int = 0,
+
+    // === NEW: Season/Event ===
+    val seasonPoints: Int = 0,
+    val seasonLevel: Int = 1
 ) {
     companion object {
-        const val BOARD_SIZE = 20 // 5x4 grid
+        const val BOARD_SIZE = 20
         const val BOARD_COLUMNS = 5
         const val BOARD_ROWS = 4
-        const val ENERGY_REGEN_TIME_MS = 300000L // 5 minutes per energy
+        const val ENERGY_REGEN_TIME_MS = 300000L
         const val SPAWN_ENERGY_COST = 3
-        const val COMBO_TIMEOUT_MS = 3000L // 3 seconds to maintain combo
-        const val FEVER_DURATION_MS = 30000L // 30 seconds fever mode
+        const val COMBO_TIMEOUT_MS = 3000L
+        const val FEVER_DURATION_MS = 30000L
         const val MAX_COMBO = 10
+        const val MAX_GIFT_LEVEL = 12
+        const val PRESTIGE_LEVEL_REQUIREMENT = 30
     }
+}
+
+/**
+ * Permanent bonuses from prestige
+ */
+data class PermanentBonuses(
+    val coinMultiplier: Float = 1.0f,
+    val expMultiplier: Float = 1.0f,
+    val energyRegenBonus: Float = 1.0f,
+    val maxEnergyBonus: Int = 0,
+    val startingCoins: Long = 100,
+    val startingGems: Int = 10,
+    val luckyChanceBonus: Float = 0f,
+    val sellPriceBonus: Float = 0f
+)
+
+/**
+ * Milestone rewards
+ */
+data class Milestone(
+    val id: String,
+    val title: String,
+    val description: String,
+    val icon: String,
+    val requirement: MilestoneRequirement,
+    val reward: MilestoneReward,
+    val isClaimed: Boolean = false
+)
+
+sealed class MilestoneRequirement {
+    data class Level(val level: Int) : MilestoneRequirement()
+    data class Merges(val count: Int) : MilestoneRequirement()
+    data class HighestGift(val level: Int) : MilestoneRequirement()
+    data class Coins(val amount: Long) : MilestoneRequirement()
+    data class Combo(val count: Int) : MilestoneRequirement()
+    data class FeverCount(val count: Int) : MilestoneRequirement()
+    data class Prestige(val level: Int) : MilestoneRequirement()
+    data class DailyStreak(val days: Int) : MilestoneRequirement()
+    data class Collection(val count: Int) : MilestoneRequirement()
+}
+
+sealed class MilestoneReward {
+    data class Coins(val amount: Long) : MilestoneReward()
+    data class Gems(val amount: Int) : MilestoneReward()
+    data class Energy(val amount: Int) : MilestoneReward()
+    data class PrestigePoints(val amount: Int) : MilestoneReward()
+    data class MaxEnergyBonus(val amount: Int) : MilestoneReward()
+    data class UnlockCell(val cellIndex: Int) : MilestoneReward()
+    data class SpecialGift(val type: SpecialGiftType) : MilestoneReward()
+    data class Title(val title: String) : MilestoneReward()
+}
+
+/**
+ * Daily calendar reward
+ */
+data class CalendarDay(
+    val day: Int,
+    val reward: CalendarReward,
+    val isClaimed: Boolean = false,
+    val isSpecial: Boolean = false
+)
+
+sealed class CalendarReward {
+    data class Coins(val amount: Long) : CalendarReward()
+    data class Gems(val amount: Int) : CalendarReward()
+    data class Energy(val amount: Int) : CalendarReward()
+    data class Booster(val type: BoosterType) : CalendarReward()
+    data class PrestigePoints(val amount: Int) : CalendarReward()
+    data class Multiple(val rewards: List<CalendarReward>) : CalendarReward()
 }
 
 /**
@@ -73,11 +163,11 @@ data class BoardCell(
  * Different cell types with special properties
  */
 enum class CellType {
-    NORMAL,          // Regular cell
-    GOLDEN,          // 2x coins from merges here
-    EXPERIENCE,      // 2x XP from merges here
-    MYSTERY,         // Random bonus on merge
-    FROZEN           // Temporarily disabled
+    NORMAL,
+    GOLDEN,
+    EXPERIENCE,
+    MYSTERY,
+    FROZEN
 }
 
 /**
@@ -89,7 +179,7 @@ sealed class CellEffect {
 }
 
 /**
- * Represents a gift placed on the board - Enhanced with special abilities
+ * Represents a gift placed on the board
  */
 data class CellGift(
     val typeIndex: Int,
@@ -98,6 +188,28 @@ data class CellGift(
     val specialType: SpecialGiftType? = null
 ) {
     val displayLevel: Int get() = level + 1
+
+    /**
+     * Calculate sell price for this gift
+     */
+    fun getSellPrice(prestigeBonus: Float = 0f): Long {
+        val basePrice = when (level) {
+            0 -> 5L
+            1 -> 15L
+            2 -> 40L
+            3 -> 100L
+            4 -> 250L
+            5 -> 600L
+            6 -> 1500L
+            7 -> 4000L
+            8 -> 10000L
+            9 -> 25000L
+            10 -> 60000L
+            else -> 150000L
+        }
+        val rarityMultiplier = GiftType.fromLevel(typeIndex).rarity.expMultiplier
+        return (basePrice * rarityMultiplier * (1f + prestigeBonus)).toLong()
+    }
 }
 
 /**
@@ -121,6 +233,7 @@ sealed class UnlockRequirement {
     data class Coins(val amount: Long) : UnlockRequirement()
     data class Gems(val amount: Int) : UnlockRequirement()
     data class Merges(val count: Int) : UnlockRequirement()
+    data class Prestige(val level: Int) : UnlockRequirement()
 }
 
 /**
@@ -143,12 +256,28 @@ enum class BoosterType(
     val coinCost: Long,
     val gemCost: Int
 ) {
-    DOUBLE_XP("Double XP", "📚", 300000L, 500, 5),              // 5 min
-    DOUBLE_COINS("Double Coins", "💰", 300000L, 500, 5),        // 5 min
-    ENERGY_FREEZE("Energy Freeze", "❄️", 600000L, 800, 8),      // 10 min
-    AUTO_MERGE("Auto Merge", "🤖", 60000L, 300, 3),              // 1 min
-    LUCKY_SPAWN("Lucky Spawn", "🍀", 180000L, 400, 4),           // 3 min - better gifts
-    COMBO_KEEPER("Combo Keeper", "🔥", 120000L, 350, 3)          // 2 min - combos don't reset
+    DOUBLE_XP("Double XP", "📚", 300000L, 500, 5) {
+        override val durationMinutes: Int get() = 5
+    },
+    DOUBLE_COINS("Double Coins", "💰", 300000L, 500, 5) {
+        override val durationMinutes: Int get() = 5
+    },
+    ENERGY_FREEZE("Energy Freeze", "❄️", 600000L, 800, 8) {
+        override val durationMinutes: Int get() = 10
+    },
+    AUTO_MERGE("Auto Merge", "🤖", 60000L, 300, 3) {
+        override val durationMinutes: Int get() = 1
+    },
+    LUCKY_SPAWN("Lucky Spawn", "🍀", 180000L, 400, 4) {
+        override val durationMinutes: Int get() = 3
+    },
+    COMBO_KEEPER("Combo Keeper", "🔥", 120000L, 350, 3) {
+        override val durationMinutes: Int get() = 2
+    };
+
+    abstract val durationMinutes: Int
+    val coinPrice: Long get() = coinCost
+    val gemPrice: Int get() = gemCost
 }
 
 /**
@@ -162,21 +291,23 @@ data class Quest(
     val target: Int,
     val progress: Int = 0,
     val reward: QuestReward,
-    val expiresAt: Long? = null // null = permanent quest
+    val expiresAt: Long? = null
 ) {
     val isCompleted: Boolean get() = progress >= target
     val progressPercent: Float get() = (progress.toFloat() / target).coerceIn(0f, 1f)
 }
 
 enum class QuestType {
-    MERGE_COUNT,        // Merge X times
-    MERGE_LEVEL,        // Create a gift of level X
-    COLLECT_COINS,      // Collect X coins
-    REACH_COMBO,        // Reach X combo
-    USE_SPECIAL,        // Use X special gifts
-    TRIGGER_FEVER,      // Trigger fever mode X times
-    SPEND_ENERGY,       // Spend X energy
-    UNLOCK_GIFT_TYPE    // Unlock X gift types
+    MERGE_COUNT,
+    MERGE_LEVEL,
+    COLLECT_COINS,
+    REACH_COMBO,
+    USE_SPECIAL,
+    TRIGGER_FEVER,
+    SPEND_ENERGY,
+    UNLOCK_GIFT_TYPE,
+    SELL_GIFTS,
+    REACH_LEVEL
 }
 
 sealed class QuestReward {
@@ -185,6 +316,7 @@ sealed class QuestReward {
     data class Energy(val amount: Int) : QuestReward()
     data class Booster(val type: BoosterType, val count: Int) : QuestReward()
     data class SpecialGift(val type: SpecialGiftType) : QuestReward()
+    data class PrestigePoints(val amount: Int) : QuestReward()
 }
 
 /**
@@ -194,15 +326,19 @@ data class PlayerStatistics(
     val totalMerges: Int = 0,
     val totalCoinsEarned: Long = 0,
     val totalGemsEarned: Int = 0,
+    val totalExpEarned: Long = 0,
     val totalEnergySpent: Int = 0,
     val highestCombo: Int = 0,
-    val feverModeTriggered: Int = 0,
+    val feverActivations: Int = 0,
     val specialGiftsUsed: Int = 0,
     val playTimeMinutes: Long = 0,
     val gamesPlayed: Int = 1,
     val bestMergeStreak: Int = 0,
-    val luckyWheelSpins: Int = 0,
-    val questsCompleted: Int = 0
+    val wheelSpins: Int = 0,
+    val questsCompleted: Int = 0,
+    val giftsSold: Int = 0,
+    val totalSellCoins: Long = 0,
+    val prestigeResets: Int = 0
 )
 
 /**
@@ -211,7 +347,7 @@ data class PlayerStatistics(
 data class WheelPrize(
     val type: WheelPrizeType,
     val amount: Int,
-    val weight: Int // Higher = more common
+    val weight: Int
 )
 
 enum class WheelPrizeType(val emoji: String) {
@@ -221,11 +357,12 @@ enum class WheelPrizeType(val emoji: String) {
     BOOSTER("🎁"),
     SPECIAL_GIFT("🌟"),
     JACKPOT("🎰"),
+    PRESTIGE_POINTS("⭐"),
     NOTHING("😅")
 }
 
 /**
- * Player achievements - Enhanced
+ * Player achievements
  */
 data class Achievement(
     val id: String,
@@ -253,4 +390,25 @@ sealed class AchievementReward {
     data class UnlockGift(val giftTypeIndex: Int) : AchievementReward()
     data class Booster(val type: BoosterType, val count: Int) : AchievementReward()
     data class Title(val title: String) : AchievementReward()
+    data class PrestigePoints(val amount: Int) : AchievementReward()
+}
+
+/**
+ * Prestige upgrade options
+ */
+enum class PrestigeUpgrade(
+    val displayName: String,
+    val description: String,
+    val icon: String,
+    val maxLevel: Int,
+    val baseCost: Int
+) {
+    COIN_MULTIPLIER("Coin Master", "+10% coins per level", "💰", 10, 5),
+    EXP_MULTIPLIER("XP Boost", "+10% experience per level", "📚", 10, 5),
+    ENERGY_REGEN("Fast Energy", "-5% energy regen time", "⚡", 10, 8),
+    MAX_ENERGY("Energy Tank", "+5 max energy per level", "🔋", 10, 10),
+    STARTING_COINS("Rich Start", "+100 starting coins", "🏦", 5, 15),
+    STARTING_GEMS("Gem Starter", "+5 starting gems", "💎", 5, 20),
+    LUCKY_CHANCE("Lucky Star", "+2% special gift chance", "🍀", 5, 25),
+    SELL_BONUS("Merchant", "+10% sell prices", "🏪", 5, 12)
 }

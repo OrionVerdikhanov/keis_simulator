@@ -14,12 +14,11 @@ class GameUseCase(private val repository: GameRepository) {
     }
 
     /**
-     * Spawns a new gift on the board with combo and booster considerations
+     * Spawns a new gift on the board
      */
     suspend fun spawnGift(): SpawnResult {
         val player = repository.getPlayerSync() ?: return SpawnResult.Error("Player not found")
 
-        // Check if energy freeze booster is active
         val hasEnergyFreeze = player.activeBoostersJson.contains("ENERGY_FREEZE")
         val energyCost = if (hasEnergyFreeze) 0 else GameState.SPAWN_ENERGY_COST
 
@@ -30,7 +29,6 @@ class GameUseCase(private val repository: GameRepository) {
         val emptyCell = repository.getRandomEmptyCell()
             ?: return SpawnResult.BoardFull
 
-        // Consume energy
         if (energyCost > 0) {
             repository.updateEnergy(
                 player.energy - energyCost,
@@ -39,11 +37,10 @@ class GameUseCase(private val repository: GameRepository) {
             repository.updateStatsEnergySpent(energyCost)
         }
 
-        // Check for lucky spawn booster
         val hasLuckySpawn = player.activeBoostersJson.contains("LUCKY_SPAWN")
+        val luckyBonus = player.luckyChanceBonus
 
-        // Generate gift with potential special type
-        val (giftType, isSpecial, specialType) = generateGift(player.level, hasLuckySpawn)
+        val (giftType, isSpecial, specialType) = generateGift(player.level, hasLuckySpawn, luckyBonus)
 
         repository.updateCellGift(
             emptyCell.index,
@@ -60,6 +57,254 @@ class GameUseCase(private val repository: GameRepository) {
             isSpecial = isSpecial,
             specialType = specialType
         )
+    }
+
+    /**
+     * Sell a gift for coins and optionally spawn a new one
+     */
+    suspend fun sellGift(cellIndex: Int, spawnNew: Boolean = true): SellResult {
+        val player = repository.getPlayerSync() ?: return SellResult.Error("Player not found")
+        val board = repository.getBoardSync()
+        val cell = board.find { it.index == cellIndex }
+            ?: return SellResult.Error("Cell not found")
+
+        if (cell.giftTypeIndex == null || cell.giftLevel == null) {
+            return SellResult.Error("No gift to sell")
+        }
+
+        // Calculate sell price with prestige bonus
+        val gift = CellGift(cell.giftTypeIndex, cell.giftLevel, cell.isSpecialGift)
+        val sellPrice = gift.getSellPrice(player.sellPriceBonus)
+
+        // Clear the cell
+        repository.clearCell(cellIndex)
+
+        // Update coins
+        repository.updateCoins(player.coins + sellPrice)
+
+        // Update statistics
+        repository.incrementGiftsSold(sellPrice)
+
+        // Spawn a new level 1 gift if requested
+        var spawnedGift: SpawnResult.Success? = null
+        if (spawnNew) {
+            val hasLuckySpawn = player.activeBoostersJson.contains("LUCKY_SPAWN")
+            val (giftType, isSpecial, specialType) = generateGift(player.level, hasLuckySpawn, player.luckyChanceBonus)
+
+            repository.updateCellGift(
+                cellIndex,
+                giftType,
+                0,
+                isSpecial,
+                specialType?.name
+            )
+
+            spawnedGift = SpawnResult.Success(
+                cellIndex = cellIndex,
+                giftType = giftType,
+                level = 0,
+                isSpecial = isSpecial,
+                specialType = specialType
+            )
+        }
+
+        return SellResult.Success(
+            coinsGained = sellPrice,
+            giftLevel = cell.giftLevel,
+            spawnedNew = spawnedGift
+        )
+    }
+
+    /**
+     * Perform prestige reset - keep permanent bonuses, reset progress
+     */
+    suspend fun performPrestige(): PrestigeResult {
+        val player = repository.getPlayerSync() ?: return PrestigeResult.Error("Player not found")
+
+        // Check requirements
+        if (player.level < GameState.PRESTIGE_LEVEL_REQUIREMENT) {
+            return PrestigeResult.NotEligible(
+                currentLevel = player.level,
+                requiredLevel = GameState.PRESTIGE_LEVEL_REQUIREMENT
+            )
+        }
+
+        // Calculate prestige points earned based on level and achievements
+        val basePoints = player.level - GameState.PRESTIGE_LEVEL_REQUIREMENT + 10
+        val bonusPoints = (player.totalMerges / 100) + (player.highestGiftLevel * 2)
+        val totalPoints = basePoints + bonusPoints
+
+        val newPrestigeLevel = player.prestigeLevel + 1
+        val newPrestigePoints = player.prestigePoints + totalPoints
+
+        // Reset player progress but keep prestige data
+        repository.performPrestigeReset(
+            newPrestigeLevel = newPrestigeLevel,
+            newPrestigePoints = newPrestigePoints,
+            startingCoins = player.startingCoins,
+            startingGems = player.startingGems,
+            maxEnergyBonus = player.maxEnergyBonus
+        )
+
+        // Increment prestige count in statistics
+        repository.incrementPrestigeResets()
+
+        return PrestigeResult.Success(
+            newPrestigeLevel = newPrestigeLevel,
+            pointsEarned = totalPoints,
+            totalPoints = newPrestigePoints
+        )
+    }
+
+    /**
+     * Purchase a prestige upgrade with prestige points
+     */
+    suspend fun purchasePrestigeUpgrade(upgrade: PrestigeUpgrade): PrestigeUpgradeResult {
+        val player = repository.getPlayerSync() ?: return PrestigeUpgradeResult.Error("Player not found")
+
+        val currentLevel = player.getUpgradeLevel(upgrade)
+        if (currentLevel >= upgrade.maxLevel) {
+            return PrestigeUpgradeResult.MaxLevel
+        }
+
+        val cost = upgrade.baseCost * (currentLevel + 1)
+        if (player.prestigePoints < cost) {
+            return PrestigeUpgradeResult.NotEnoughPoints(
+                required = cost,
+                current = player.prestigePoints
+            )
+        }
+
+        // Deduct points and apply upgrade
+        repository.purchasePrestigeUpgrade(upgrade, cost, currentLevel + 1)
+
+        return PrestigeUpgradeResult.Success(
+            upgrade = upgrade,
+            newLevel = currentLevel + 1,
+            pointsSpent = cost
+        )
+    }
+
+    /**
+     * Check and claim available milestones
+     */
+    suspend fun checkMilestones(): List<Milestone> {
+        val player = repository.getPlayerSync() ?: return emptyList()
+        val claimable = mutableListOf<Milestone>()
+
+        getAllMilestones().forEach { milestone ->
+            if (player.claimedMilestones.contains(milestone.id)) return@forEach
+
+            val isAchieved = when (val req = milestone.requirement) {
+                is MilestoneRequirement.Level -> player.level >= req.level
+                is MilestoneRequirement.Merges -> player.totalMerges >= req.count
+                is MilestoneRequirement.HighestGift -> player.highestGiftLevel >= req.level
+                is MilestoneRequirement.Coins -> player.totalCoinsEarned >= req.amount
+                is MilestoneRequirement.Combo -> player.highestCombo >= req.count
+                is MilestoneRequirement.FeverCount -> player.feverTriggered >= req.count
+                is MilestoneRequirement.Prestige -> player.prestigeLevel >= req.level
+                is MilestoneRequirement.DailyStreak -> player.dailyStreak >= req.days
+                is MilestoneRequirement.Collection -> player.unlockedGiftsCount >= req.count
+            }
+
+            if (isAchieved) {
+                claimable.add(milestone)
+            }
+        }
+
+        return claimable
+    }
+
+    /**
+     * Claim a milestone reward
+     */
+    suspend fun claimMilestone(milestoneId: String): MilestoneClaimResult {
+        val player = repository.getPlayerSync() ?: return MilestoneClaimResult.Error("Player not found")
+
+        if (player.claimedMilestones.contains(milestoneId)) {
+            return MilestoneClaimResult.AlreadyClaimed
+        }
+
+        val milestone = getAllMilestones().find { it.id == milestoneId }
+            ?: return MilestoneClaimResult.Error("Milestone not found")
+
+        // Apply reward
+        when (val reward = milestone.reward) {
+            is MilestoneReward.Coins -> repository.updateCoins(player.coins + reward.amount)
+            is MilestoneReward.Gems -> repository.updateGems(player.gems + reward.amount)
+            is MilestoneReward.Energy -> {
+                val newEnergy = (player.energy + reward.amount).coerceAtMost(player.maxEnergy + player.maxEnergyBonus)
+                repository.updateEnergy(newEnergy, player.lastEnergyRegenTime)
+            }
+            is MilestoneReward.PrestigePoints -> repository.addPrestigePoints(reward.amount)
+            is MilestoneReward.MaxEnergyBonus -> repository.addMaxEnergyBonus(reward.amount)
+            is MilestoneReward.UnlockCell -> repository.unlockCell(reward.cellIndex)
+            is MilestoneReward.SpecialGift -> {
+                val emptyCell = repository.getRandomEmptyCell()
+                if (emptyCell != null) {
+                    repository.updateCellGift(emptyCell.index, 0, 0, true, reward.type.name)
+                }
+            }
+            is MilestoneReward.Title -> { /* Store in player preferences */ }
+        }
+
+        repository.claimMilestone(milestoneId)
+
+        return MilestoneClaimResult.Success(milestone)
+    }
+
+    /**
+     * Get daily calendar rewards
+     */
+    suspend fun claimCalendarReward(): CalendarClaimResult {
+        val player = repository.getPlayerSync() ?: return CalendarClaimResult.Error("Player not found")
+
+        if (player.calendarClaimed) {
+            return CalendarClaimResult.AlreadyClaimed
+        }
+
+        val calendarDay = getCalendarDay(player.calendarDay)
+
+        // Apply rewards
+        when (val reward = calendarDay.reward) {
+            is CalendarReward.Coins -> repository.updateCoins(player.coins + reward.amount)
+            is CalendarReward.Gems -> repository.updateGems(player.gems + reward.amount)
+            is CalendarReward.Energy -> {
+                val newEnergy = (player.energy + reward.amount).coerceAtMost(player.maxEnergy + player.maxEnergyBonus)
+                repository.updateEnergy(newEnergy, player.lastEnergyRegenTime)
+            }
+            is CalendarReward.Booster -> {
+                val newBooster = ActiveBooster(reward.type, System.currentTimeMillis() + reward.type.durationMs)
+                repository.updateActiveBoosters(listOf(newBooster))
+            }
+            is CalendarReward.PrestigePoints -> repository.addPrestigePoints(reward.amount)
+            is CalendarReward.Multiple -> {
+                reward.rewards.forEach { subReward ->
+                    when (subReward) {
+                        is CalendarReward.Coins -> repository.updateCoins(player.coins + subReward.amount)
+                        is CalendarReward.Gems -> repository.updateGems(player.gems + subReward.amount)
+                        is CalendarReward.Energy -> {
+                            val newEnergy = (player.energy + subReward.amount).coerceAtMost(player.maxEnergy + player.maxEnergyBonus)
+                            repository.updateEnergy(newEnergy, player.lastEnergyRegenTime)
+                        }
+                        else -> {}
+                    }
+                }
+            }
+        }
+
+        // Advance calendar
+        val nextDay = if (player.calendarDay >= 30) 1 else player.calendarDay + 1
+        repository.updateCalendar(nextDay, true)
+
+        return CalendarClaimResult.Success(calendarDay)
+    }
+
+    /**
+     * Reset calendar claimed status (called daily)
+     */
+    suspend fun resetDailyCalendar() {
+        repository.updateCalendar(repository.getPlayerSync()?.calendarDay ?: 1, false)
     }
 
     /**
@@ -81,7 +326,6 @@ class GameUseCase(private val repository: GameRepository) {
             return MergeResult.Error("Target cell is empty")
         }
 
-        // Rainbow gift can merge with anything
         val isRainbowMerge = fromCell.specialGiftType == "RAINBOW" || toCell.specialGiftType == "RAINBOW"
 
         if (!isRainbowMerge) {
@@ -131,10 +375,10 @@ class GameUseCase(private val repository: GameRepository) {
             repository.incrementFeverTriggered()
         }
 
-        // Calculate rewards with all multipliers
+        // Calculate rewards with all multipliers including prestige
         val giftType = GiftType.fromLevel(fromCell.giftTypeIndex)
-        var expMultiplier = comboMultiplier
-        var coinsMultiplier = comboMultiplier
+        var expMultiplier = comboMultiplier * player.expMultiplier
+        var coinsMultiplier = comboMultiplier * player.coinMultiplier
 
         // Cell type bonuses
         if (toCell.cellType == "GOLDEN") coinsMultiplier *= 2f
@@ -150,7 +394,7 @@ class GameUseCase(private val repository: GameRepository) {
         if (player.activeBoostersJson.contains("DOUBLE_XP")) expMultiplier *= 2f
         if (player.activeBoostersJson.contains("DOUBLE_COINS")) coinsMultiplier *= 2f
 
-        // Multiplier gift bonus (one-time)
+        // Multiplier gift bonus
         if (fromCell.specialGiftType == "MULTIPLIER" || toCell.specialGiftType == "MULTIPLIER") {
             expMultiplier *= 2f
             coinsMultiplier *= 2f
@@ -169,6 +413,9 @@ class GameUseCase(private val repository: GameRepository) {
             repository.updateGems(player.gems + bonusGems)
         }
 
+        // Season points
+        val seasonPoints = newLevel * 5
+
         // Clear source and update target
         repository.clearCell(fromIndex)
         repository.updateCellGift(toIndex, fromCell.giftTypeIndex, newLevel, false, null)
@@ -178,6 +425,7 @@ class GameUseCase(private val repository: GameRepository) {
         repository.updateCombo(newCombo, now)
         repository.updateFever(feverProgress.coerceIn(0f, 1f), isFeverActive, feverEndTime)
         repository.updateStatsOnMerge(coinsGain, newCombo)
+        repository.addSeasonPoints(seasonPoints)
 
         val newExp = player.experience + expGain
         val (finalExp, newPlayerLevel) = calculateLevelUp(newExp, player.level)
@@ -208,7 +456,8 @@ class GameUseCase(private val repository: GameRepository) {
             leveledUp = newPlayerLevel > player.level,
             newPlayerLevel = newPlayerLevel,
             combo = newCombo,
-            triggeredFever = triggeredFever
+            triggeredFever = triggeredFever,
+            seasonPoints = seasonPoints
         )
     }
 
@@ -276,7 +525,6 @@ class GameUseCase(private val repository: GameRepository) {
         val matchingCells = repository.getCellsWithMatchingGift(cell.giftTypeIndex, cell.giftLevel ?: 0)
         val affectedIndices = mutableListOf<Int>()
 
-        // Move matching gifts adjacent to this one
         val emptyAdjacentCells = repository.getAdjacentCells(cellIndex).filter { it.giftTypeIndex == null && !it.isLocked }
 
         for ((index, matchCell) in matchingCells.withIndex()) {
@@ -290,7 +538,7 @@ class GameUseCase(private val repository: GameRepository) {
             affectedIndices.add(targetCell.index)
         }
 
-        repository.clearCell(cellIndex) // Clear the magnet
+        repository.clearCell(cellIndex)
 
         return SpecialGiftResult.Success(
             type = SpecialGiftType.MAGNET,
@@ -306,7 +554,6 @@ class GameUseCase(private val repository: GameRepository) {
 
         for ((_, cells) in grouped) {
             if (cells.size >= 2) {
-                // Auto-merge pairs
                 val pairs = cells.chunked(2).filter { it.size == 2 }
                 for (pair in pairs) {
                     val from = pair[0]
@@ -330,14 +577,12 @@ class GameUseCase(private val repository: GameRepository) {
     private suspend fun useClockGift(): SpecialGiftResult {
         val player = repository.getPlayerSync() ?: return SpecialGiftResult.Error("Player not found")
 
-        // Add energy freeze booster for 1 minute
         val newBooster = ActiveBooster(
             type = BoosterType.ENERGY_FREEZE,
             expiresAt = System.currentTimeMillis() + 60000
         )
 
         val currentBoosters = mutableListOf<ActiveBooster>()
-        // Parse existing and add new
         currentBoosters.add(newBooster)
         repository.updateActiveBoosters(currentBoosters)
 
@@ -357,7 +602,6 @@ class GameUseCase(private val repository: GameRepository) {
         val now = System.currentTimeMillis()
         val dayMs = 24 * 60 * 60 * 1000L
 
-        // Check if free spin available
         val canFreeSpin = player.freeSpinsAvailable > 0 ||
                 (now - player.lastWheelSpinTime > dayMs)
 
@@ -365,7 +609,6 @@ class GameUseCase(private val repository: GameRepository) {
             return WheelSpinResult.NotEnoughGems
         }
 
-        // Consume resource
         if (!canFreeSpin) {
             repository.updateGems(player.gems - 10)
         }
@@ -373,7 +616,6 @@ class GameUseCase(private val repository: GameRepository) {
         repository.updateWheelSpin(now, if (canFreeSpin) 0 else player.freeSpinsAvailable)
         repository.incrementWheelSpins()
 
-        // Generate prize
         val prizes = listOf(
             WheelPrize(WheelPrizeType.COINS, 100, 30),
             WheelPrize(WheelPrizeType.COINS, 250, 20),
@@ -384,6 +626,7 @@ class GameUseCase(private val repository: GameRepository) {
             WheelPrize(WheelPrizeType.GEMS, 15, 5),
             WheelPrize(WheelPrizeType.BOOSTER, 1, 10),
             WheelPrize(WheelPrizeType.SPECIAL_GIFT, 1, 5),
+            WheelPrize(WheelPrizeType.PRESTIGE_POINTS, 5, 3),
             WheelPrize(WheelPrizeType.JACKPOT, 1000, 1),
             WheelPrize(WheelPrizeType.NOTHING, 0, 20)
         )
@@ -400,7 +643,6 @@ class GameUseCase(private val repository: GameRepository) {
             }
         }
 
-        // Apply prize
         when (selectedPrize.type) {
             WheelPrizeType.COINS -> repository.updateCoins(player.coins + selectedPrize.amount)
             WheelPrizeType.GEMS -> repository.updateGems(player.gems + selectedPrize.amount)
@@ -413,20 +655,17 @@ class GameUseCase(private val repository: GameRepository) {
                 repository.updateGems(player.gems + 50)
             }
             WheelPrizeType.BOOSTER -> {
-                // Give random booster
                 val boosterType = BoosterType.entries.random()
                 val newBooster = ActiveBooster(boosterType, System.currentTimeMillis() + boosterType.durationMs)
                 repository.updateActiveBoosters(listOf(newBooster))
             }
-            else -> { /* Nothing */ }
+            WheelPrizeType.PRESTIGE_POINTS -> repository.addPrestigePoints(selectedPrize.amount)
+            else -> {}
         }
 
         return WheelSpinResult.Success(selectedPrize)
     }
 
-    /**
-     * Calculate offline rewards
-     */
     suspend fun calculateOfflineRewards(): OfflineRewardResult {
         val player = repository.getPlayerSync() ?: return OfflineRewardResult(0, 0, 0)
 
@@ -439,10 +678,9 @@ class GameUseCase(private val repository: GameRepository) {
             return OfflineRewardResult(0, 0, 0)
         }
 
-        // Cap at 8 hours
         val cappedMinutes = offlineMinutes.coerceAtMost(480)
 
-        val coins = (cappedMinutes * 2).toLong()
+        val coins = (cappedMinutes * 2 * player.coinMultiplier).toLong()
         val energy = (cappedMinutes / 10).coerceAtMost(20)
 
         repository.updateCoins(player.coins + coins)
@@ -458,9 +696,6 @@ class GameUseCase(private val repository: GameRepository) {
         )
     }
 
-    /**
-     * Purchase and activate a booster
-     */
     suspend fun purchaseBooster(type: BoosterType, useGems: Boolean): BoosterPurchaseResult {
         val player = repository.getPlayerSync() ?: return BoosterPurchaseResult.Error("Player not found")
 
@@ -471,17 +706,13 @@ class GameUseCase(private val repository: GameRepository) {
             return if (useGems) BoosterPurchaseResult.NotEnoughGems else BoosterPurchaseResult.NotEnoughCoins
         }
 
-        // Deduct cost
         if (useGems) {
             repository.updateGems(player.gems - cost)
         } else {
             repository.updateCoins(player.coins - cost)
         }
 
-        // Activate booster
         val newBooster = ActiveBooster(type, System.currentTimeMillis() + type.durationMs)
-
-        // Parse current active boosters and add new one
         val currentActive = mutableListOf(newBooster)
         repository.updateActiveBoosters(currentActive)
 
@@ -504,18 +735,19 @@ class GameUseCase(private val repository: GameRepository) {
 
     suspend fun regenerateEnergy(): Int {
         val player = repository.getPlayerSync() ?: return 0
-        if (player.energy >= player.maxEnergy) return 0
+        val maxEnergy = player.maxEnergy + player.maxEnergyBonus
+        if (player.energy >= maxEnergy) return 0
 
-        // Check for energy freeze
         if (player.activeBoostersJson.contains("ENERGY_FREEZE")) return 0
 
         val now = System.currentTimeMillis()
+        val regenTime = (GameState.ENERGY_REGEN_TIME_MS * player.energyRegenBonus).toLong()
         val timePassed = now - player.lastEnergyRegenTime
-        val energyToRegen = (timePassed / GameState.ENERGY_REGEN_TIME_MS).toInt()
+        val energyToRegen = (timePassed / regenTime).toInt()
 
         if (energyToRegen > 0) {
-            val newEnergy = (player.energy + energyToRegen).coerceAtMost(player.maxEnergy)
-            val newRegenTime = player.lastEnergyRegenTime + (energyToRegen * GameState.ENERGY_REGEN_TIME_MS)
+            val newEnergy = (player.energy + energyToRegen).coerceAtMost(maxEnergy)
+            val newRegenTime = player.lastEnergyRegenTime + (energyToRegen * regenTime)
             repository.updateEnergy(newEnergy, newRegenTime)
             return energyToRegen
         }
@@ -540,8 +772,7 @@ class GameUseCase(private val repository: GameRepository) {
             1
         }
 
-        // Enhanced rewards based on streak
-        val coinsReward = 100L * newStreak
+        val coinsReward = (100L * newStreak * player.coinMultiplier).toLong()
         val energyReward = 10 * newStreak
         val gemsReward = if (newStreak >= 7) 20 else newStreak
 
@@ -549,8 +780,12 @@ class GameUseCase(private val repository: GameRepository) {
         repository.updateCoins(player.coins + coinsReward)
         repository.updateGems(player.gems + gemsReward)
 
-        val newEnergy = (player.energy + energyReward).coerceAtMost(player.maxEnergy)
+        val maxEnergy = player.maxEnergy + player.maxEnergyBonus
+        val newEnergy = (player.energy + energyReward).coerceAtMost(maxEnergy)
         repository.updateEnergy(newEnergy, player.lastEnergyRegenTime)
+
+        // Reset calendar claimed status
+        repository.updateCalendar(player.calendarDay, false)
 
         return DailyRewardResult.Success(
             streak = newStreak,
@@ -560,11 +795,10 @@ class GameUseCase(private val repository: GameRepository) {
         )
     }
 
-    private fun generateGift(playerLevel: Int, luckySpawn: Boolean): Triple<Int, Boolean, SpecialGiftType?> {
+    private fun generateGift(playerLevel: Int, luckySpawn: Boolean, luckyBonus: Float): Triple<Int, Boolean, SpecialGiftType?> {
         val maxTier = ((playerLevel - 1) / 5).coerceIn(0, 5)
 
-        // 5% chance for special gift (10% with lucky spawn)
-        val specialChance = if (luckySpawn) 0.15f else 0.05f
+        val specialChance = (if (luckySpawn) 0.15f else 0.05f) + luckyBonus
         if (Random.nextFloat() < specialChance) {
             val specialType = SpecialGiftType.entries.random()
             return Triple(Random.nextInt(maxTier + 1), true, specialType)
@@ -654,8 +888,71 @@ class GameUseCase(private val repository: GameRepository) {
     }
 
     private suspend fun updateQuestProgress(type: QuestType, value: Int) {
-        // Quest progress update would be implemented here
-        // For now, this is a placeholder
+        // Quest progress implementation
+    }
+
+    private fun getAllMilestones(): List<Milestone> {
+        return listOf(
+            Milestone("level_5", "Rising Star", "Reach level 5", "⭐", MilestoneRequirement.Level(5), MilestoneReward.Coins(500)),
+            Milestone("level_10", "Gift Hunter", "Reach level 10", "🎯", MilestoneRequirement.Level(10), MilestoneReward.Gems(20)),
+            Milestone("level_20", "Gift Master", "Reach level 20", "🏆", MilestoneRequirement.Level(20), MilestoneReward.PrestigePoints(10)),
+            Milestone("level_30", "Gift Legend", "Reach level 30", "👑", MilestoneRequirement.Level(30), MilestoneReward.Gems(100)),
+            Milestone("merges_100", "Merger I", "Perform 100 merges", "🔄", MilestoneRequirement.Merges(100), MilestoneReward.Coins(300)),
+            Milestone("merges_500", "Merger II", "Perform 500 merges", "🔄", MilestoneRequirement.Merges(500), MilestoneReward.Gems(15)),
+            Milestone("merges_1000", "Merger III", "Perform 1000 merges", "🔄", MilestoneRequirement.Merges(1000), MilestoneReward.PrestigePoints(20)),
+            Milestone("gift_5", "Collector I", "Create a level 5 gift", "🎁", MilestoneRequirement.HighestGift(5), MilestoneReward.Energy(50)),
+            Milestone("gift_8", "Collector II", "Create a level 8 gift", "🎁", MilestoneRequirement.HighestGift(8), MilestoneReward.Gems(30)),
+            Milestone("gift_10", "Collector III", "Create a level 10 gift", "🎁", MilestoneRequirement.HighestGift(10), MilestoneReward.PrestigePoints(50)),
+            Milestone("combo_5", "Combo Starter", "Reach 5x combo", "🔥", MilestoneRequirement.Combo(5), MilestoneReward.Coins(200)),
+            Milestone("combo_10", "Combo Master", "Reach 10x combo", "🔥", MilestoneRequirement.Combo(10), MilestoneReward.Gems(25)),
+            Milestone("fever_5", "Fever Fan", "Trigger fever 5 times", "🌡️", MilestoneRequirement.FeverCount(5), MilestoneReward.Energy(30)),
+            Milestone("fever_20", "Fever Master", "Trigger fever 20 times", "🌡️", MilestoneRequirement.FeverCount(20), MilestoneReward.PrestigePoints(15)),
+            Milestone("prestige_1", "Reborn", "Prestige once", "♻️", MilestoneRequirement.Prestige(1), MilestoneReward.Gems(50)),
+            Milestone("prestige_5", "Veteran", "Prestige 5 times", "♻️", MilestoneRequirement.Prestige(5), MilestoneReward.PrestigePoints(100)),
+            Milestone("streak_7", "Dedicated", "7-day login streak", "📅", MilestoneRequirement.DailyStreak(7), MilestoneReward.Gems(35)),
+            Milestone("collection_6", "Half Way", "Unlock 6 gift types", "📦", MilestoneRequirement.Collection(6), MilestoneReward.Coins(1000)),
+            Milestone("collection_12", "Complete!", "Unlock all 12 gift types", "📦", MilestoneRequirement.Collection(12), MilestoneReward.PrestigePoints(100))
+        )
+    }
+
+    private fun getCalendarDay(day: Int): CalendarDay {
+        val rewards = listOf(
+            CalendarReward.Coins(100),
+            CalendarReward.Energy(20),
+            CalendarReward.Coins(200),
+            CalendarReward.Gems(5),
+            CalendarReward.Energy(30),
+            CalendarReward.Coins(300),
+            CalendarReward.Multiple(listOf(CalendarReward.Coins(500), CalendarReward.Gems(10))), // Day 7
+            CalendarReward.Energy(25),
+            CalendarReward.Coins(400),
+            CalendarReward.Gems(10),
+            CalendarReward.Energy(35),
+            CalendarReward.Coins(500),
+            CalendarReward.Gems(15),
+            CalendarReward.Multiple(listOf(CalendarReward.Coins(1000), CalendarReward.Gems(20), CalendarReward.Energy(50))), // Day 14
+            CalendarReward.Coins(600),
+            CalendarReward.Energy(40),
+            CalendarReward.Gems(15),
+            CalendarReward.Coins(700),
+            CalendarReward.Energy(45),
+            CalendarReward.Gems(20),
+            CalendarReward.Multiple(listOf(CalendarReward.Coins(1500), CalendarReward.Gems(30))), // Day 21
+            CalendarReward.Coins(800),
+            CalendarReward.Energy(50),
+            CalendarReward.Gems(25),
+            CalendarReward.Coins(1000),
+            CalendarReward.Energy(60),
+            CalendarReward.Gems(30),
+            CalendarReward.Multiple(listOf(CalendarReward.Coins(2000), CalendarReward.Gems(50), CalendarReward.Energy(100))), // Day 28
+            CalendarReward.PrestigePoints(10),
+            CalendarReward.Multiple(listOf(CalendarReward.Coins(5000), CalendarReward.Gems(100), CalendarReward.PrestigePoints(25))) // Day 30
+        )
+
+        val index = (day - 1).coerceIn(0, rewards.size - 1)
+        val isSpecial = day % 7 == 0 || day == 30
+
+        return CalendarDay(day = day, reward = rewards[index], isSpecial = isSpecial)
     }
 }
 
@@ -682,11 +979,57 @@ sealed class MergeResult {
         val leveledUp: Boolean,
         val newPlayerLevel: Int,
         val combo: Int = 1,
-        val triggeredFever: Boolean = false
+        val triggeredFever: Boolean = false,
+        val seasonPoints: Int = 0
     ) : MergeResult()
     data object CannotMerge : MergeResult()
     data object MaxLevelReached : MergeResult()
     data class Error(val message: String) : MergeResult()
+}
+
+sealed class SellResult {
+    data class Success(
+        val coinsGained: Long,
+        val giftLevel: Int,
+        val spawnedNew: SpawnResult.Success?
+    ) : SellResult()
+    data class Error(val message: String) : SellResult()
+}
+
+sealed class PrestigeResult {
+    data class Success(
+        val newPrestigeLevel: Int,
+        val pointsEarned: Int,
+        val totalPoints: Int
+    ) : PrestigeResult()
+    data class NotEligible(
+        val currentLevel: Int,
+        val requiredLevel: Int
+    ) : PrestigeResult()
+    data class Error(val message: String) : PrestigeResult()
+}
+
+sealed class PrestigeUpgradeResult {
+    data class Success(
+        val upgrade: PrestigeUpgrade,
+        val newLevel: Int,
+        val pointsSpent: Int
+    ) : PrestigeUpgradeResult()
+    data object MaxLevel : PrestigeUpgradeResult()
+    data class NotEnoughPoints(val required: Int, val current: Int) : PrestigeUpgradeResult()
+    data class Error(val message: String) : PrestigeUpgradeResult()
+}
+
+sealed class MilestoneClaimResult {
+    data class Success(val milestone: Milestone) : MilestoneClaimResult()
+    data object AlreadyClaimed : MilestoneClaimResult()
+    data class Error(val message: String) : MilestoneClaimResult()
+}
+
+sealed class CalendarClaimResult {
+    data class Success(val day: CalendarDay) : CalendarClaimResult()
+    data object AlreadyClaimed : CalendarClaimResult()
+    data class Error(val message: String) : CalendarClaimResult()
 }
 
 sealed class DailyRewardResult {
