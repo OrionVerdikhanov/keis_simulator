@@ -66,7 +66,7 @@ fun WheelScreen(
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "🎰 Lucky Wheel",
+            text = "🎰 Колесо удачи",
             fontSize = 28.sp,
             fontWeight = FontWeight.Bold,
             color = AccentGold
@@ -75,7 +75,7 @@ fun WheelScreen(
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Spin to win amazing prizes!",
+            text = "Крутите и выигрывайте призы!",
             fontSize = 14.sp,
             color = TextSecondary
         )
@@ -126,7 +126,7 @@ private fun WheelHeader(gems: Int, onBack: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = "Назад",
                 tint = TextPrimary
             )
         }
@@ -160,11 +160,11 @@ private fun LuckyWheel(
         WheelPrizeDisplay("💰", "100", AccentGold),
         WheelPrizeDisplay("💎", "5", AccentBlue),
         WheelPrizeDisplay("⚡", "20", EnergyBar),
-        WheelPrizeDisplay("🎁", "Special", AccentPurple),
+        WheelPrizeDisplay("🎁", "Особый", AccentPurple),
         WheelPrizeDisplay("💰", "500", AccentOrange),
         WheelPrizeDisplay("💎", "15", Color(0xFF00BCD4)),
         WheelPrizeDisplay("⚡", "50", Color(0xFF8BC34A)),
-        WheelPrizeDisplay("🔥", "Fever", AccentRed)
+        WheelPrizeDisplay("🔥", "Фурия", AccentRed)
     )
 
     Canvas(
@@ -264,7 +264,7 @@ private fun SpinInfo(freeSpins: Int) {
                     color = ExpBar
                 )
                 Text(
-                    text = "Free Spins",
+                    text = "Бесплатно",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
@@ -289,7 +289,7 @@ private fun SpinInfo(freeSpins: Int) {
                     )
                 }
                 Text(
-                    text = "per spin",
+                    text = "за вращение",
                     fontSize = 12.sp,
                     color = TextSecondary
                 )
@@ -329,7 +329,7 @@ private fun SpinButton(
         shape = RoundedCornerShape(16.dp)
     ) {
         Text(
-            text = if (isFree) "🎰 SPIN FREE!" else "🎰 SPIN (10💎)",
+            text = if (isFree) "🎰 КРУТИТЬ БЕСПЛАТНО!" else "🎰 КРУТИТЬ (10💎)",
             fontSize = 18.sp,
             fontWeight = FontWeight.Bold
         )

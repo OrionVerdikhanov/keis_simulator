@@ -76,7 +76,7 @@ fun PrestigeScreen(
 
             item {
                 Text(
-                    text = "⚡ Permanent Upgrades",
+                    text = "⚡ Постоянные улучшения",
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -131,7 +131,7 @@ private fun PrestigeHeader(
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = "Назад",
                 tint = TextPrimary
             )
         }
@@ -140,14 +140,14 @@ private fun PrestigeHeader(
 
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                text = "♻️ Prestige",
+                text = "♻️ Престиж",
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = AccentPurple
             )
             if (prestigeLevel > 0) {
                 Text(
-                    text = "Prestige Level $prestigeLevel",
+                    text = "Уровень престижа $prestigeLevel",
                     fontSize = 12.sp,
                     color = AccentGold
                 )
@@ -226,7 +226,7 @@ private fun PrestigeInfoCard(
             Spacer(modifier = Modifier.height(12.dp))
 
             Text(
-                text = "Reset for Rewards",
+                text = "Сброс за награды",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -235,7 +235,7 @@ private fun PrestigeInfoCard(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Reset your progress to earn Prestige Points\nand unlock permanent bonuses!",
+                text = "Сбросьте прогресс для получения очков престижа\nи разблокировки постоянных бонусов!",
                 fontSize = 13.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -249,7 +249,7 @@ private fun PrestigeInfoCard(
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "Current Level",
+                        text = "Ваш уровень",
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
@@ -263,7 +263,7 @@ private fun PrestigeInfoCard(
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "Required",
+                        text = "Требуется",
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
@@ -277,7 +277,7 @@ private fun PrestigeInfoCard(
 
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
-                        text = "Points to Earn",
+                        text = "Получите очков",
                         fontSize = 11.sp,
                         color = TextSecondary
                     )
@@ -306,7 +306,7 @@ private fun PrestigeInfoCard(
             ) {
                 if (canPrestige) {
                     Text(
-                        text = "♻️ PRESTIGE NOW",
+                        text = "♻️ ПЕРЕЙТИ В ПРЕСТИЖ",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -318,7 +318,7 @@ private fun PrestigeInfoCard(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Level ${GameState.PRESTIGE_LEVEL_REQUIREMENT} Required",
+                        text = "Нужен ${GameState.PRESTIGE_LEVEL_REQUIREMENT} уровень",
                         fontSize = 14.sp
                     )
                 }
@@ -418,7 +418,7 @@ private fun PrestigeUpgradeItem(
 
             if (isMaxLevel) {
                 Text(
-                    text = "MAX",
+                    text = "МАКС",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = AccentGold,
@@ -461,7 +461,7 @@ private fun CurrentBonusesCard(bonuses: PermanentBonuses) {
                 .padding(16.dp)
         ) {
             Text(
-                text = "📊 Current Bonuses",
+                text = "📊 Текущие бонусы",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -473,10 +473,10 @@ private fun CurrentBonusesCard(bonuses: PermanentBonuses) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                BonusItem(icon = "💰", value = "+${((bonuses.coinMultiplier - 1) * 100).toInt()}%", label = "Coins")
-                BonusItem(icon = "📚", value = "+${((bonuses.expMultiplier - 1) * 100).toInt()}%", label = "XP")
-                BonusItem(icon = "⚡", value = "-${((1 - bonuses.energyRegenBonus) * 100).toInt()}%", label = "Regen")
-                BonusItem(icon = "🔋", value = "+${bonuses.maxEnergyBonus}", label = "Max E")
+                BonusItem(icon = "💰", value = "+${((bonuses.coinMultiplier - 1) * 100).toInt()}%", label = "Монеты")
+                BonusItem(icon = "📚", value = "+${((bonuses.expMultiplier - 1) * 100).toInt()}%", label = "Опыт")
+                BonusItem(icon = "⚡", value = "-${((1 - bonuses.energyRegenBonus) * 100).toInt()}%", label = "Реген")
+                BonusItem(icon = "🔋", value = "+${bonuses.maxEnergyBonus}", label = "Макс Э")
             }
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -485,10 +485,10 @@ private fun CurrentBonusesCard(bonuses: PermanentBonuses) {
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
-                BonusItem(icon = "🏦", value = "${bonuses.startingCoins}", label = "Start $")
-                BonusItem(icon = "💎", value = "${bonuses.startingGems}", label = "Start G")
-                BonusItem(icon = "🍀", value = "+${(bonuses.luckyChanceBonus * 100).toInt()}%", label = "Lucky")
-                BonusItem(icon = "🏪", value = "+${(bonuses.sellPriceBonus * 100).toInt()}%", label = "Sell")
+                BonusItem(icon = "🏦", value = "${bonuses.startingCoins}", label = "Старт М")
+                BonusItem(icon = "💎", value = "${bonuses.startingGems}", label = "Старт К")
+                BonusItem(icon = "🍀", value = "+${(bonuses.luckyChanceBonus * 100).toInt()}%", label = "Удача")
+                BonusItem(icon = "🏪", value = "+${(bonuses.sellPriceBonus * 100).toInt()}%", label = "Продажа")
             }
         }
     }
@@ -523,7 +523,7 @@ private fun PrestigeConfirmDialog(
         containerColor = BackgroundCard,
         title = {
             Text(
-                text = "♻️ Confirm Prestige",
+                text = "♻️ Подтвердить престиж",
                 fontWeight = FontWeight.Bold,
                 color = AccentPurple
             )
@@ -531,22 +531,22 @@ private fun PrestigeConfirmDialog(
         text = {
             Column {
                 Text(
-                    text = "This will reset your progress:",
+                    text = "Будет сброшено:",
                     color = TextSecondary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• Level will reset to 1", color = AccentRed)
-                Text("• Coins will reset", color = AccentRed)
-                Text("• Board will be cleared", color = AccentRed)
+                Text("• Уровень сбросится до 1", color = AccentRed)
+                Text("• Монеты сбросятся", color = AccentRed)
+                Text("• Поле очистится", color = AccentRed)
                 Spacer(modifier = Modifier.height(12.dp))
                 Text(
-                    text = "You will keep:",
+                    text = "Вы сохраните:",
                     color = TextSecondary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
-                Text("• All permanent bonuses", color = AccentGreen)
-                Text("• Prestige Points (+$pointsToEarn)", color = AccentGold)
-                Text("• Unlocked upgrades", color = AccentGreen)
+                Text("• Все постоянные бонусы", color = AccentGreen)
+                Text("• Очки престижа (+$pointsToEarn)", color = AccentGold)
+                Text("• Купленные улучшения", color = AccentGreen)
             }
         },
         confirmButton = {
@@ -554,12 +554,12 @@ private fun PrestigeConfirmDialog(
                 onClick = onConfirm,
                 colors = ButtonDefaults.buttonColors(containerColor = AccentPurple)
             ) {
-                Text("Prestige!")
+                Text("Престиж!")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSecondary)
+                Text("Отмена", color = TextSecondary)
             }
         }
     )

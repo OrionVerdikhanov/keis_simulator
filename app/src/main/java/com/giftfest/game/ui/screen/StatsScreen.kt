@@ -92,7 +92,7 @@ private fun StatsHeader(onBack: () -> Unit) {
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = "Назад",
                 tint = TextPrimary
             )
         }
@@ -100,7 +100,7 @@ private fun StatsHeader(onBack: () -> Unit) {
         Spacer(modifier = Modifier.width(12.dp))
 
         Text(
-            text = "📊 Statistics",
+            text = "📊 Статистика",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = AccentGold
@@ -162,7 +162,7 @@ private fun PlayerLevelCard(level: Int) {
                         color = BackgroundDark
                     )
                     Text(
-                        text = "LEVEL",
+                        text = "УРОВЕНЬ",
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = BackgroundDark.copy(alpha = 0.8f)
@@ -206,7 +206,7 @@ private fun GameStatsCard(
                 .padding(16.dp)
         ) {
             Text(
-                text = "🎮 Game Stats",
+                text = "🎮 Игровая статистика",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -221,17 +221,17 @@ private fun GameStatsCard(
                 StatItem(
                     icon = "🔄",
                     value = formatNumber(totalMerges.toLong()),
-                    label = "Total Merges"
+                    label = "Соединений"
                 )
                 StatItem(
                     icon = "⭐",
                     value = "$highestGiftLevel",
-                    label = "Best Gift"
+                    label = "Лучший"
                 )
                 StatItem(
                     icon = "🔥",
                     value = "${statistics.highestCombo}",
-                    label = "Max Combo"
+                    label = "Макс комбо"
                 )
             }
 
@@ -244,17 +244,17 @@ private fun GameStatsCard(
                 StatItem(
                     icon = "🎯",
                     value = "${statistics.feverActivations}",
-                    label = "Fever Times"
+                    label = "Фурий"
                 )
                 StatItem(
                     icon = "🎡",
                     value = "${statistics.wheelSpins}",
-                    label = "Wheel Spins"
+                    label = "Вращений"
                 )
                 StatItem(
                     icon = "⚡",
                     value = "${statistics.specialGiftsUsed}",
-                    label = "Specials Used"
+                    label = "Особых"
                 )
             }
         }
@@ -299,7 +299,7 @@ private fun EarningsCard(statistics: PlayerStatistics) {
                 .padding(16.dp)
         ) {
             Text(
-                text = "💰 Total Earnings",
+                text = "💰 Всего заработано",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary
@@ -314,19 +314,19 @@ private fun EarningsCard(statistics: PlayerStatistics) {
                 EarningItem(
                     icon = "💰",
                     value = formatNumber(statistics.totalCoinsEarned),
-                    label = "Coins",
+                    label = "Монет",
                     color = AccentGold
                 )
                 EarningItem(
                     icon = "💎",
                     value = formatNumber(statistics.totalGemsEarned.toLong()),
-                    label = "Gems",
+                    label = "Кристаллов",
                     color = AccentBlue
                 )
                 EarningItem(
                     icon = "📚",
                     value = formatNumber(statistics.totalExpEarned),
-                    label = "Experience",
+                    label = "Опыта",
                     color = ExpBar
                 )
             }
@@ -378,7 +378,7 @@ private fun AchievementsPreview(statistics: PlayerStatistics) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "🏆 Achievements",
+                    text = "🏆 Достижения",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -447,7 +447,7 @@ private fun CollectionPreview(highestGiftLevel: Int) {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "🎁 Gift Collection",
+                    text = "🎁 Коллекция подарков",
                     fontSize = 18.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
@@ -525,25 +525,25 @@ private fun calculateAchievements(statistics: PlayerStatistics): Int {
 
 private fun getRankTitle(level: Int): String {
     return when {
-        level >= 50 -> "🌟 Gift Master"
-        level >= 40 -> "💫 Gift Legend"
-        level >= 30 -> "✨ Gift Expert"
-        level >= 20 -> "🎯 Gift Pro"
-        level >= 10 -> "🎁 Gift Collector"
-        level >= 5 -> "📦 Gift Opener"
-        else -> "🆕 Newcomer"
+        level >= 50 -> "🌟 Мастер подарков"
+        level >= 40 -> "💫 Легенда подарков"
+        level >= 30 -> "✨ Эксперт подарков"
+        level >= 20 -> "🎯 Профи подарков"
+        level >= 10 -> "🎁 Коллекционер"
+        level >= 5 -> "📦 Открыватель"
+        else -> "🆕 Новичок"
     }
 }
 
 private fun getNextRankInfo(level: Int): String {
     return when {
-        level >= 50 -> "Maximum rank achieved!"
-        level >= 40 -> "10 levels to Gift Master"
-        level >= 30 -> "10 levels to Gift Legend"
-        level >= 20 -> "10 levels to Gift Expert"
-        level >= 10 -> "10 levels to Gift Pro"
-        level >= 5 -> "5 levels to Gift Collector"
-        else -> "${5 - level} levels to Gift Opener"
+        level >= 50 -> "Максимальный ранг достигнут!"
+        level >= 40 -> "10 уровней до Мастера"
+        level >= 30 -> "10 уровней до Легенды"
+        level >= 20 -> "10 уровней до Эксперта"
+        level >= 10 -> "10 уровней до Профи"
+        level >= 5 -> "5 уровней до Коллекционера"
+        else -> "${5 - level} уровней до Открывателя"
     }
 }
 

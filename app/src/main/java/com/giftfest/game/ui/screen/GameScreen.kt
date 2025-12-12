@@ -66,19 +66,19 @@ fun GameScreen(viewModel: GameViewModel) {
                     showMergePopup = true
                 }
                 is GameEvent.LevelUp -> {
-                    Toast.makeText(context, "🎉 Level Up! Now level ${event.newLevel}!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "🎉 Новый уровень! Теперь вы ${event.newLevel} уровня!", Toast.LENGTH_LONG).show()
                 }
                 is GameEvent.DailyRewardClaimed -> {
-                    Toast.makeText(context, "Day ${event.streak}! +${event.coins} coins, +${event.energy} energy", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "День ${event.streak}! +${event.coins} монет, +${event.energy} энергии", Toast.LENGTH_LONG).show()
                 }
                 is GameEvent.FeverTriggered -> {
-                    Toast.makeText(context, "🔥 FEVER MODE ACTIVATED!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "🔥 РЕЖИМ ФУРИИ АКТИВИРОВАН!", Toast.LENGTH_SHORT).show()
                 }
                 is GameEvent.FeverEnded -> {
-                    Toast.makeText(context, "Fever mode ended!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Режим фурии завершён!", Toast.LENGTH_SHORT).show()
                 }
                 is GameEvent.ComboMilestone -> {
-                    Toast.makeText(context, "🔥 ${event.combo}x COMBO!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "🔥 ${event.combo}x КОМБО!", Toast.LENGTH_SHORT).show()
                 }
                 is GameEvent.OfflineRewards -> {
                     offlineRewardsData = Triple(event.coins, event.energy, event.minutes)
@@ -92,7 +92,7 @@ fun GameScreen(viewModel: GameViewModel) {
                     showSoldPopup = true
                 }
                 is GameEvent.PrestigeComplete -> {
-                    Toast.makeText(context, "♻️ Prestige ${event.newLevel}! +${event.pointsEarned} points!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "♻️ Престиж ${event.newLevel}! +${event.pointsEarned} очков!", Toast.LENGTH_LONG).show()
                 }
                 is GameEvent.Haptic -> {
                     vibrator?.let { v ->
@@ -248,7 +248,7 @@ private fun LoadingScreen() {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             CircularProgressIndicator(color = AccentGold)
             Spacer(modifier = Modifier.height(16.dp))
-            Text("Loading...", color = TextSecondary)
+            Text("Загрузка...", color = TextSecondary)
         }
     }
 }
@@ -425,7 +425,7 @@ private fun TopBar(
         ) {
             Icon(
                 imageVector = Icons.Default.BarChart,
-                contentDescription = "Stats",
+                contentDescription = "Статистика",
                 tint = TextPrimary
             )
         }
@@ -603,7 +603,7 @@ private fun SellButton(
             )
             Spacer(modifier = Modifier.width(8.dp))
             Text(
-                text = "SELL +$sellPrice",
+                text = "ПРОДАТЬ +$sellPrice",
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -697,13 +697,13 @@ private fun SpawnButton(
             )
         } else if (isBoardFull) {
             Text(
-                text = "📦 BOARD FULL - SELL TO CONTINUE",
+                text = "📦 ПОЛЕ ПОЛНОЕ - ПРОДАЙТЕ ПОДАРОК",
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             )
         } else {
             Text(
-                text = "🎁 GET GIFT",
+                text = "🎁 ПОЛУЧИТЬ ПОДАРОК",
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -739,7 +739,7 @@ private fun MergeSuccessPopup(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = if (data.combo > 1) "🔥 ${data.combo}x COMBO!" else "✨ MERGED!",
+                text = if (data.combo > 1) "🔥 ${data.combo}x КОМБО!" else "✨ СОЕДИНЕНО!",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (data.combo > 1) AccentOrange else AccentGold
@@ -758,7 +758,7 @@ private fun MergeSuccessPopup(
             }
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Level ${data.newLevel} Gift!",
+                text = "Подарок ${data.newLevel} уровня!",
                 fontSize = 14.sp,
                 color = TextSecondary
             )
@@ -788,7 +788,7 @@ private fun SoldSuccessPopup(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
-                text = "💸 SOLD!",
+                text = "💸 ПРОДАНО!",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
                 color = AccentOrange
@@ -798,7 +798,7 @@ private fun SoldSuccessPopup(
             Spacer(modifier = Modifier.height(8.dp))
             if (data.spawnedNew) {
                 Text(
-                    text = "New gift spawned!",
+                    text = "Появился новый подарок!",
                     fontSize = 13.sp,
                     color = AccentGreen
                 )
@@ -833,7 +833,7 @@ private fun OfflineRewardsDialog(
         containerColor = BackgroundCard,
         title = {
             Text(
-                text = "🌙 Welcome Back!",
+                text = "🌙 С возвращением!",
                 fontWeight = FontWeight.Bold,
                 color = AccentGold
             )
@@ -841,11 +841,11 @@ private fun OfflineRewardsDialog(
         text = {
             Column {
                 Text(
-                    text = "You were away for ${minutes / 60}h ${minutes % 60}m",
+                    text = "Вы отсутствовали ${minutes / 60}ч ${minutes % 60}м",
                     color = TextSecondary
                 )
                 Spacer(modifier = Modifier.height(12.dp))
-                Text(text = "Rewards collected:", color = TextPrimary)
+                Text(text = "Собрано наград:", color = TextPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     RewardItem(icon = "💰", value = "+$coins", color = AccentGold)
@@ -858,7 +858,7 @@ private fun OfflineRewardsDialog(
                 onClick = onDismiss,
                 colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary)
             ) {
-                Text("Claim!")
+                Text("Забрать!")
             }
         }
     )
@@ -876,7 +876,7 @@ private fun SellGiftDialog(
         containerColor = BackgroundCard,
         title = {
             Text(
-                text = "💰 Sell Gift?",
+                text = "💰 Продать подарок?",
                 fontWeight = FontWeight.Bold,
                 color = AccentOrange
             )
@@ -884,18 +884,18 @@ private fun SellGiftDialog(
         text = {
             Column {
                 Text(
-                    text = "Sell this Level $giftLevel gift?",
+                    text = "Продать подарок $giftLevel уровня?",
                     color = TextPrimary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "You'll receive +$sellPrice coins",
+                    text = "Вы получите +$sellPrice монет",
                     color = AccentGold,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "A new Level 1 gift will spawn",
+                    text = "На его месте появится подарок 1 уровня",
                     color = TextSecondary,
                     fontSize = 12.sp
                 )
@@ -906,12 +906,12 @@ private fun SellGiftDialog(
                 onClick = onSell,
                 colors = ButtonDefaults.buttonColors(containerColor = AccentOrange)
             ) {
-                Text("Sell!")
+                Text("Продать!")
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancel", color = TextSecondary)
+                Text("Отмена", color = TextSecondary)
             }
         }
     )
@@ -926,7 +926,7 @@ private fun BoardFullDialog(
         containerColor = BackgroundCard,
         title = {
             Text(
-                text = "📦 Board Full!",
+                text = "📦 Поле заполнено!",
                 fontWeight = FontWeight.Bold,
                 color = AccentOrange
             )
@@ -934,12 +934,12 @@ private fun BoardFullDialog(
         text = {
             Column {
                 Text(
-                    text = "Your board is full!",
+                    text = "Ваше поле полностью заполнено!",
                     color = TextPrimary
                 )
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
-                    text = "Tap a gift and use the SELL button to make room for new gifts.",
+                    text = "Нажмите на подарок и используйте кнопку ПРОДАТЬ, чтобы освободить место.",
                     color = TextSecondary
                 )
             }
@@ -949,7 +949,7 @@ private fun BoardFullDialog(
                 onClick = onDismiss,
                 colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary)
             ) {
-                Text("Got it!")
+                Text("Понятно!")
             }
         }
     )

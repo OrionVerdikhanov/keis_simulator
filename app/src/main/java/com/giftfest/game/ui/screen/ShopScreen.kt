@@ -51,7 +51,7 @@ fun ShopScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "⚡ Boosters",
+            text = "⚡ Усилители",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary,
@@ -78,7 +78,7 @@ fun ShopScreen(
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "💎 Gem Packs",
+            text = "💎 Наборы кристаллов",
             fontSize = 20.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary,
@@ -113,7 +113,7 @@ private fun ShopHeader(
         ) {
             Icon(
                 imageVector = Icons.Default.ArrowBack,
-                contentDescription = "Back",
+                contentDescription = "Назад",
                 tint = TextPrimary
             )
         }
@@ -121,7 +121,7 @@ private fun ShopHeader(
         Spacer(modifier = Modifier.width(12.dp))
 
         Text(
-            text = "🛒 Shop",
+            text = "🛒 Магазин",
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = AccentGold,
@@ -241,7 +241,7 @@ private fun BoosterShopItem(
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "Duration: ${booster.durationMinutes} min",
+                    text = "Длительность: ${booster.durationMinutes} мин",
                     fontSize = 11.sp,
                     color = AccentBlue
                 )
@@ -306,19 +306,19 @@ private fun GemPacksRow() {
     ) {
         GemPack(
             gems = 50,
-            price = "Free Ad",
+            price = "Реклама",
             color = ExpBar,
             modifier = Modifier.weight(1f)
         )
         GemPack(
             gems = 200,
-            price = "$0.99",
+            price = "99 ₽",
             color = AccentBlue,
             modifier = Modifier.weight(1f)
         )
         GemPack(
             gems = 500,
-            price = "$1.99",
+            price = "199 ₽",
             color = AccentPurple,
             isPopular = true,
             modifier = Modifier.weight(1f)
@@ -364,7 +364,7 @@ private fun GemPack(
         ) {
             if (isPopular) {
                 Text(
-                    text = "BEST VALUE",
+                    text = "ЛУЧШАЯ ЦЕНА",
                     fontSize = 8.sp,
                     fontWeight = FontWeight.Bold,
                     color = AccentGold
@@ -400,12 +400,12 @@ private fun GemPack(
 
 private fun getBoosterDescription(booster: BoosterType): String {
     return when (booster) {
-        BoosterType.DOUBLE_XP -> "Earn 2x experience from all merges"
-        BoosterType.DOUBLE_COINS -> "Earn 2x coins from all merges"
-        BoosterType.ENERGY_FREEZE -> "Energy consumption paused"
-        BoosterType.AUTO_MERGE -> "Gifts auto-merge when possible"
-        BoosterType.LUCKY_SPAWN -> "Higher chance for rare & special gifts"
-        BoosterType.COMBO_KEEPER -> "Combos don't reset between merges"
+        BoosterType.DOUBLE_XP -> "Получайте х2 опыта за все соединения"
+        BoosterType.DOUBLE_COINS -> "Получайте х2 монет за все соединения"
+        BoosterType.ENERGY_FREEZE -> "Энергия не тратится"
+        BoosterType.AUTO_MERGE -> "Подарки соединяются автоматически"
+        BoosterType.LUCKY_SPAWN -> "Повышенный шанс редких подарков"
+        BoosterType.COMBO_KEEPER -> "Комбо не сбрасывается между соединениями"
     }
 }
 

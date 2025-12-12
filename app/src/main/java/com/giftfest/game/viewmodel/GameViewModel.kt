@@ -545,7 +545,7 @@ class GameViewModel(
 }
 
 enum class Screen {
-    GAME, SHOP, WHEEL, STATS, QUESTS, PRESTIGE
+    GAME, SHOP, WHEEL, STATS, QUESTS, PRESTIGE, SETTINGS
 }
 
 enum class HapticType {

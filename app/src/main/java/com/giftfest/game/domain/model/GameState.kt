@@ -216,12 +216,12 @@ data class CellGift(
  * Special gift types with unique abilities
  */
 enum class SpecialGiftType(val emoji: String, val description: String) {
-    BOMB("💣", "Destroys adjacent gifts and converts to coins"),
-    MAGNET("🧲", "Attracts same-type gifts together"),
-    RAINBOW("🌈", "Can merge with any gift type"),
-    MULTIPLIER("✨", "Doubles rewards from next merge"),
-    LIGHTNING("⚡", "Instantly merges all matching pairs"),
-    CLOCK("⏰", "Freezes energy consumption for 1 minute")
+    BOMB("💣", "Уничтожает соседние подарки и превращает в монеты"),
+    MAGNET("🧲", "Притягивает одинаковые подарки"),
+    RAINBOW("🌈", "Соединяется с любым типом подарка"),
+    MULTIPLIER("✨", "Удваивает награду за следующее соединение"),
+    LIGHTNING("⚡", "Мгновенно соединяет все пары"),
+    CLOCK("⏰", "Замораживает расход энергии на 1 минуту")
 }
 
 /**
@@ -256,22 +256,22 @@ enum class BoosterType(
     val coinCost: Long,
     val gemCost: Int
 ) {
-    DOUBLE_XP("Double XP", "📚", 300000L, 500, 5) {
+    DOUBLE_XP("Двойной опыт", "📚", 300000L, 500, 5) {
         override val durationMinutes: Int get() = 5
     },
-    DOUBLE_COINS("Double Coins", "💰", 300000L, 500, 5) {
+    DOUBLE_COINS("Двойные монеты", "💰", 300000L, 500, 5) {
         override val durationMinutes: Int get() = 5
     },
-    ENERGY_FREEZE("Energy Freeze", "❄️", 600000L, 800, 8) {
+    ENERGY_FREEZE("Заморозка энергии", "❄️", 600000L, 800, 8) {
         override val durationMinutes: Int get() = 10
     },
-    AUTO_MERGE("Auto Merge", "🤖", 60000L, 300, 3) {
+    AUTO_MERGE("Авто-соединение", "🤖", 60000L, 300, 3) {
         override val durationMinutes: Int get() = 1
     },
-    LUCKY_SPAWN("Lucky Spawn", "🍀", 180000L, 400, 4) {
+    LUCKY_SPAWN("Удачный подарок", "🍀", 180000L, 400, 4) {
         override val durationMinutes: Int get() = 3
     },
-    COMBO_KEEPER("Combo Keeper", "🔥", 120000L, 350, 3) {
+    COMBO_KEEPER("Хранитель комбо", "🔥", 120000L, 350, 3) {
         override val durationMinutes: Int get() = 2
     };
 
@@ -403,12 +403,12 @@ enum class PrestigeUpgrade(
     val maxLevel: Int,
     val baseCost: Int
 ) {
-    COIN_MULTIPLIER("Coin Master", "+10% coins per level", "💰", 10, 5),
-    EXP_MULTIPLIER("XP Boost", "+10% experience per level", "📚", 10, 5),
-    ENERGY_REGEN("Fast Energy", "-5% energy regen time", "⚡", 10, 8),
-    MAX_ENERGY("Energy Tank", "+5 max energy per level", "🔋", 10, 10),
-    STARTING_COINS("Rich Start", "+100 starting coins", "🏦", 5, 15),
-    STARTING_GEMS("Gem Starter", "+5 starting gems", "💎", 5, 20),
-    LUCKY_CHANCE("Lucky Star", "+2% special gift chance", "🍀", 5, 25),
-    SELL_BONUS("Merchant", "+10% sell prices", "🏪", 5, 12)
+    COIN_MULTIPLIER("Мастер монет", "+10% монет за уровень", "💰", 10, 5),
+    EXP_MULTIPLIER("Рост опыта", "+10% опыта за уровень", "📚", 10, 5),
+    ENERGY_REGEN("Быстрая энергия", "-5% времени регенерации", "⚡", 10, 8),
+    MAX_ENERGY("Бак энергии", "+5 к макс. энергии", "🔋", 10, 10),
+    STARTING_COINS("Богатый старт", "+100 начальных монет", "🏦", 5, 15),
+    STARTING_GEMS("Старт с кристаллами", "+5 начальных кристаллов", "💎", 5, 20),
+    LUCKY_CHANCE("Звезда удачи", "+2% шанс особого подарка", "🍀", 5, 25),
+    SELL_BONUS("Торговец", "+10% к цене продажи", "🏪", 5, 12)
 }
