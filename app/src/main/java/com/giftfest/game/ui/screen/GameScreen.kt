@@ -1,67 +1,101 @@
 package com.giftfest.game.ui.screen
 
+import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.content.getSystemService
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.giftfest.game.domain.model.GameState
 import com.giftfest.game.ui.component.*
-import com.giftfest.game.ui.theme.BackgroundDark
-import com.giftfest.game.viewmodel.GameEvent
-import com.giftfest.game.viewmodel.GameUiState
-import com.giftfest.game.viewmodel.GameViewModel
+import com.giftfest.game.ui.theme.*
+import com.giftfest.game.viewmodel.*
 import kotlinx.coroutines.flow.collectLatest
 
+@OptIn(ExperimentalAnimationApi::class)
 @Composable
-fun GameScreen(
-    viewModel: GameViewModel
-) {
+fun GameScreen(viewModel: GameViewModel) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val vibrator = context.getSystemService<Vibrator>()
 
     var snackbarMessage by remember { mutableStateOf<String?>(null) }
     var showMergePopup by remember { mutableStateOf(false) }
-    var mergePopupData by remember { mutableStateOf(Triple(0L, 0L, 0)) }
+    var mergePopupData by remember { mutableStateOf(MergePopupData()) }
+    var showOfflineRewardsDialog by remember { mutableStateOf(false) }
+    var offlineRewardsData by remember { mutableStateOf(Triple(0L, 0, 0)) }
 
-    // Handle events
     LaunchedEffect(Unit) {
         viewModel.events.collectLatest { event ->
             when (event) {
-                is GameEvent.ShowMessage -> {
-                    snackbarMessage = event.message
-                }
-                is GameEvent.GiftSpawned -> {
-                    // Animation could be added here
-                }
+                is GameEvent.ShowMessage -> snackbarMessage = event.message
+                is GameEvent.GiftSpawned -> { /* Animation handled in component */ }
                 is GameEvent.MergeSuccess -> {
-                    mergePopupData = Triple(event.expGained, event.coinsGained, event.newLevel)
+                    mergePopupData = MergePopupData(
+                        expGained = event.expGained,
+                        coinsGained = event.coinsGained,
+                        gemsGained = event.gemsGained,
+                        newLevel = event.newLevel,
+                        combo = event.combo
+                    )
                     showMergePopup = true
                 }
                 is GameEvent.LevelUp -> {
-                    Toast.makeText(context, "Level Up! You are now level ${event.newLevel}!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "🎉 Level Up! Now level ${event.newLevel}!", Toast.LENGTH_LONG).show()
                 }
                 is GameEvent.DailyRewardClaimed -> {
-                    Toast.makeText(
-                        context,
-                        "Day ${event.streak}! +${event.coins} coins, +${event.energy} energy",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(context, "Day ${event.streak}! +${event.coins} coins, +${event.energy} energy", Toast.LENGTH_LONG).show()
                 }
-                is GameEvent.EnergyRegenerated -> {
-                    // Silent regeneration
+                is GameEvent.FeverTriggered -> {
+                    Toast.makeText(context, "🔥 FEVER MODE ACTIVATED!", Toast.LENGTH_SHORT).show()
                 }
-                is GameEvent.GiftMoved -> {
-                    // Animation could be added here
+                is GameEvent.FeverEnded -> {
+                    Toast.makeText(context, "Fever mode ended!", Toast.LENGTH_SHORT).show()
                 }
+                is GameEvent.ComboMilestone -> {
+                    Toast.makeText(context, "🔥 ${event.combo}x COMBO!", Toast.LENGTH_SHORT).show()
+                }
+                is GameEvent.OfflineRewards -> {
+                    offlineRewardsData = Triple(event.coins, event.energy, event.minutes)
+                    showOfflineRewardsDialog = true
+                }
+                is GameEvent.Haptic -> {
+                    vibrator?.let { v ->
+                        val duration = when (event.type) {
+                            HapticType.LIGHT -> 20L
+                            HapticType.MEDIUM -> 50L
+                            HapticType.HEAVY -> 100L
+                        }
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            v.vibrate(VibrationEffect.createOneShot(duration, VibrationEffect.DEFAULT_AMPLITUDE))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            v.vibrate(duration)
+                        }
+                    }
+                }
+                else -> {}
             }
         }
     }
@@ -69,34 +103,69 @@ fun GameScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(BackgroundDark)
+            .background(
+                brush = Brush.verticalGradient(
+                    colors = listOf(BackgroundDark, Color(0xFF051208))
+                )
+            )
     ) {
-        if (uiState.isLoading) {
-            LoadingScreen()
-        } else {
-            GameContent(
+        when {
+            uiState.isLoading -> LoadingScreen()
+            uiState.currentScreen == Screen.GAME -> MainGameContent(
                 uiState = uiState,
                 onCellClick = viewModel::selectCell,
-                onSpawnClick = viewModel::spawnGift
+                onSpawnClick = viewModel::spawnGift,
+                onNavigate = viewModel::setCurrentScreen
+            )
+            uiState.currentScreen == Screen.SHOP -> ShopScreen(
+                coins = uiState.coins,
+                gems = uiState.gems,
+                ownedBoosters = uiState.ownedBoosters,
+                onPurchaseBooster = viewModel::purchaseBooster,
+                onBack = { viewModel.setCurrentScreen(Screen.GAME) }
+            )
+            uiState.currentScreen == Screen.WHEEL -> WheelScreen(
+                gems = uiState.gems,
+                freeSpins = uiState.freeSpinsAvailable,
+                isSpinning = uiState.isSpinning,
+                onSpin = viewModel::spinLuckyWheel,
+                onBack = { viewModel.setCurrentScreen(Screen.GAME) }
+            )
+            uiState.currentScreen == Screen.STATS -> StatsScreen(
+                statistics = uiState.statistics,
+                level = uiState.playerLevel,
+                totalMerges = uiState.totalMerges,
+                highestGiftLevel = uiState.highestGiftLevel,
+                onBack = { viewModel.setCurrentScreen(Screen.GAME) }
             )
         }
 
-        // Snackbar overlay
         GameSnackbar(
             message = snackbarMessage,
             onDismiss = { snackbarMessage = null },
             modifier = Modifier.align(Alignment.TopCenter)
         )
 
-        // Merge success popup
-        MergeSuccessPopup(
-            expGained = mergePopupData.first,
-            coinsGained = mergePopupData.second,
-            newLevel = mergePopupData.third,
+        AnimatedVisibility(
             visible = showMergePopup,
-            onDismiss = { showMergePopup = false },
+            enter = scaleIn() + fadeIn(),
+            exit = scaleOut() + fadeOut(),
             modifier = Modifier.align(Alignment.Center)
-        )
+        ) {
+            MergeSuccessPopup(
+                data = mergePopupData,
+                onDismiss = { showMergePopup = false }
+            )
+        }
+
+        if (showOfflineRewardsDialog) {
+            OfflineRewardsDialog(
+                coins = offlineRewardsData.first,
+                energy = offlineRewardsData.second,
+                minutes = offlineRewardsData.third,
+                onDismiss = { showOfflineRewardsDialog = false }
+            )
+        }
     }
 }
 
@@ -106,124 +175,516 @@ private fun LoadingScreen() {
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center
     ) {
-        CircularProgressIndicator()
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            CircularProgressIndicator(color = AccentGold)
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("Loading...", color = TextSecondary)
+        }
     }
 }
 
 @Composable
-private fun GameContent(
+private fun MainGameContent(
     uiState: GameUiState,
     onCellClick: (Int) -> Unit,
-    onSpawnClick: () -> Unit
+    onSpawnClick: () -> Unit,
+    onNavigate: (Screen) -> Unit
 ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(vertical = 16.dp)
+            .statusBarsPadding()
+            .navigationBarsPadding()
     ) {
-        // Title
-        GameTitle()
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Player header with level, exp, coins
-        PlayerHeader(
+        TopBar(
+            coins = uiState.coins,
+            gems = uiState.gems,
             level = uiState.playerLevel,
             experience = uiState.experience,
             experienceToNextLevel = uiState.experienceToNextLevel,
-            coins = uiState.coins
+            onShopClick = { onNavigate(Screen.SHOP) },
+            onStatsClick = { onNavigate(Screen.STATS) }
         )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        AnimatedVisibility(
+            visible = uiState.currentCombo > 0,
+            enter = slideInVertically() + fadeIn(),
+            exit = slideOutVertically() + fadeOut()
+        ) {
+            ComboIndicator(
+                combo = uiState.currentCombo,
+                multiplier = uiState.comboMultiplier,
+                timeLeft = uiState.comboTimeLeft,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        FeverIndicator(
+            progress = uiState.feverProgress,
+            isActive = uiState.isFeverActive,
+            timeLeft = uiState.feverTimeLeft
+        )
+
+        Spacer(modifier = Modifier.height(8.dp))
+
+        AnimatedVisibility(
+            visible = uiState.boosterTimers.isNotEmpty(),
+            enter = expandVertically() + fadeIn(),
+            exit = shrinkVertically() + fadeOut()
+        ) {
+            ActiveBoostersBar(boosters = uiState.boosterTimers)
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Box(modifier = Modifier.weight(1f)) {
+            GameBoard(
+                board = uiState.board,
+                selectedCellIndex = uiState.selectedCellIndex,
+                onCellClick = onCellClick,
+                isFeverActive = uiState.isFeverActive,
+                modifier = Modifier.align(Alignment.Center)
+            )
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        // Hint bubble
-        HintBubble(
-            characterName = "SANTA CLAUS",
-            message = getHintMessage(uiState)
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Game board
-        GameBoard(
-            board = uiState.board,
-            selectedCellIndex = uiState.selectedCellIndex,
-            onCellClick = onCellClick
-        )
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        // Energy bar
         EnergyBar(
             energy = uiState.energy,
             maxEnergy = uiState.maxEnergy,
             timeToNextEnergy = uiState.timeToNextEnergy
         )
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
-        // Spawn button
-        SpawnButton(
-            enabled = uiState.energy >= GameState.SPAWN_ENERGY_COST,
+        BottomButtons(
+            canSpawn = uiState.energy >= GameState.SPAWN_ENERGY_COST,
             isProcessing = uiState.isProcessing,
-            onClick = onSpawnClick
+            onSpawnClick = onSpawnClick,
+            onWheelClick = { onNavigate(Screen.WHEEL) }
         )
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+    }
+}
 
-        // Stats section
-        StatsSection(
-            totalMerges = uiState.totalMerges,
-            highestGiftLevel = uiState.highestGiftLevel,
-            unlockedGifts = uiState.unlockedGifts.size
+@Composable
+private fun TopBar(
+    coins: Long,
+    gems: Int,
+    level: Int,
+    experience: Long,
+    experienceToNextLevel: Long,
+    onShopClick: () -> Unit,
+    onStatsClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        LevelBadge(level = level)
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                CurrencyBadge(
+                    icon = "💰",
+                    value = formatNumber(coins),
+                    color = AccentGold,
+                    onClick = onShopClick
+                )
+                CurrencyBadge(
+                    icon = "💎",
+                    value = "$gems",
+                    color = AccentBlue,
+                    onClick = onShopClick
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+
+            ExperienceBar(
+                experience = experience,
+                experienceToNextLevel = experienceToNextLevel
+            )
+        }
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        IconButton(
+            onClick = onStatsClick,
+            modifier = Modifier
+                .size(40.dp)
+                .background(BackgroundCard, CircleShape)
+        ) {
+            Icon(
+                imageVector = Icons.Default.BarChart,
+                contentDescription = "Stats",
+                tint = TextPrimary
+            )
+        }
+    }
+}
+
+@Composable
+private fun LevelBadge(level: Int) {
+    val infiniteTransition = rememberInfiniteTransition(label = "level")
+    val glowAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.5f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1000),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glow"
+    )
+
+    Box(
+        modifier = Modifier
+            .size(52.dp)
+            .background(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        AccentGold.copy(alpha = glowAlpha * 0.3f),
+                        Color.Transparent
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(48.dp)
+                .background(
+                    brush = Brush.linearGradient(
+                        colors = listOf(AccentGold, AccentOrange)
+                    ),
+                    shape = CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "$level",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BackgroundDark
+                )
+                Text(
+                    text = "LVL",
+                    fontSize = 7.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = BackgroundDark.copy(alpha = 0.8f)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CurrencyBadge(
+    icon: String,
+    value: String,
+    color: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .background(
+                color = BackgroundCard.copy(alpha = 0.8f),
+                shape = RoundedCornerShape(16.dp)
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = icon, fontSize = 14.sp)
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = value,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Icon(
+            imageVector = Icons.Default.Add,
+            contentDescription = "Add",
+            tint = color,
+            modifier = Modifier.size(14.dp)
         )
     }
 }
 
 @Composable
-private fun StatsSection(
-    totalMerges: Int,
-    highestGiftLevel: Int,
-    unlockedGifts: Int
+private fun ExperienceBar(
+    experience: Long,
+    experienceToNextLevel: Long
+) {
+    val progress = (experience.toFloat() / experienceToNextLevel.toFloat()).coerceIn(0f, 1f)
+
+    Column {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(6.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(BackgroundCell)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxHeight()
+                    .fillMaxWidth(progress)
+                    .background(
+                        brush = Brush.horizontalGradient(
+                            colors = listOf(ExpBar, Color(0xFF81C784))
+                        )
+                    )
+            )
+        }
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = "$experience / $experienceToNextLevel XP",
+            fontSize = 9.sp,
+            color = TextSecondary
+        )
+    }
+}
+
+@Composable
+private fun BottomButtons(
+    canSpawn: Boolean,
+    isProcessing: Boolean,
+    onSpawnClick: () -> Unit,
+    onWheelClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.SpaceEvenly
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        StatItem(label = "Merges", value = "$totalMerges")
-        StatItem(label = "Best Level", value = "$highestGiftLevel")
-        StatItem(label = "Collection", value = "$unlockedGifts/12")
+        WheelButton(
+            onClick = onWheelClick,
+            modifier = Modifier.weight(0.3f)
+        )
+
+        SpawnButton(
+            enabled = canSpawn,
+            isProcessing = isProcessing,
+            onClick = onSpawnClick,
+            modifier = Modifier.weight(0.7f)
+        )
     }
 }
 
 @Composable
-private fun StatItem(label: String, value: String) {
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally
+private fun WheelButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "wheel")
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rotation"
+    )
+
+    Button(
+        onClick = onClick,
+        modifier = modifier.height(56.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = AccentPurple
+        ),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Text(
-            text = value,
-            style = MaterialTheme.typography.titleLarge,
-            color = MaterialTheme.colorScheme.primary
-        )
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            text = "🎡",
+            fontSize = 24.sp
         )
     }
 }
 
-private fun getHintMessage(state: GameUiState): String {
+@Composable
+private fun SpawnButton(
+    enabled: Boolean,
+    isProcessing: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val scale by animateFloatAsState(
+        targetValue = if (enabled && !isProcessing) 1f else 0.95f,
+        label = "scale"
+    )
+
+    Button(
+        onClick = onClick,
+        enabled = enabled && !isProcessing,
+        modifier = modifier
+            .height(56.dp)
+            .scale(scale),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = ButtonPrimary,
+            disabledContainerColor = ButtonDisabled
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        if (isProcessing) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(24.dp),
+                color = Color.White,
+                strokeWidth = 2.dp
+            )
+        } else {
+            Text(
+                text = "🎁 GET GIFT",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.width(8.dp))
+            Text(
+                text = "(${GameState.SPAWN_ENERGY_COST}⚡)",
+                fontSize = 12.sp,
+                color = Color.White.copy(alpha = 0.8f)
+            )
+        }
+    }
+}
+
+@Composable
+private fun MergeSuccessPopup(
+    data: MergePopupData,
+    onDismiss: () -> Unit
+) {
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(1500)
+        onDismiss()
+    }
+
+    Card(
+        modifier = Modifier.padding(32.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = BackgroundCard
+        ),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = if (data.combo > 1) "🔥 ${data.combo}x COMBO!" else "✨ MERGED!",
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (data.combo > 1) AccentOrange else AccentGold
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (data.expGained > 0) {
+                    RewardItem(icon = "📚", value = "+${data.expGained}", color = ExpBar)
+                }
+                if (data.coinsGained > 0) {
+                    RewardItem(icon = "💰", value = "+${data.coinsGained}", color = AccentGold)
+                }
+                if (data.gemsGained > 0) {
+                    RewardItem(icon = "💎", value = "+${data.gemsGained}", color = AccentBlue)
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "Level ${data.newLevel} Gift!",
+                fontSize = 14.sp,
+                color = TextSecondary
+            )
+        }
+    }
+}
+
+@Composable
+private fun RewardItem(icon: String, value: String, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = icon, fontSize = 16.sp)
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = value,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold,
+            color = color
+        )
+    }
+}
+
+@Composable
+private fun OfflineRewardsDialog(
+    coins: Long,
+    energy: Int,
+    minutes: Int,
+    onDismiss: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = BackgroundCard,
+        title = {
+            Text(
+                text = "🌙 Welcome Back!",
+                fontWeight = FontWeight.Bold,
+                color = AccentGold
+            )
+        },
+        text = {
+            Column {
+                Text(
+                    text = "You were away for ${minutes / 60}h ${minutes % 60}m",
+                    color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+                Text(text = "Rewards collected:", color = TextPrimary)
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    RewardItem(icon = "💰", value = "+$coins", color = AccentGold)
+                    RewardItem(icon = "⚡", value = "+$energy", color = EnergyBar)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = ButtonPrimary)
+            ) {
+                Text("Claim!")
+            }
+        }
+    )
+}
+
+data class MergePopupData(
+    val expGained: Long = 0,
+    val coinsGained: Long = 0,
+    val gemsGained: Int = 0,
+    val newLevel: Int = 0,
+    val combo: Int = 1
+)
+
+private fun formatNumber(number: Long): String {
     return when {
-        state.board.isEmpty() -> "Welcome! Tap GET GIFT to start collecting!"
-        state.totalMerges == 0 -> "Tap a gift, then tap another same gift to merge them!"
-        state.selectedCellIndex != null -> "Now tap another gift of the same type to merge!"
-        state.energy < GameState.SPAWN_ENERGY_COST -> "Wait for energy to regenerate, or merge gifts!"
-        state.board.count { it.gift != null } >= 10 -> "Board is getting full! Merge some gifts!"
-        else -> "Keep merging gifts to unlock new types and level up!"
+        number >= 1_000_000 -> String.format("%.1fM", number / 1_000_000.0)
+        number >= 1_000 -> String.format("%.1fK", number / 1_000.0)
+        else -> number.toString()
     }
 }

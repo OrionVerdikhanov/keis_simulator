@@ -7,9 +7,15 @@ import androidx.room.PrimaryKey
 data class BoardCellEntity(
     @PrimaryKey
     val index: Int,
-    val giftTypeIndex: Int? = null, // null means empty cell
+    val giftTypeIndex: Int? = null,
     val giftLevel: Int? = null,
     val isLocked: Boolean = false,
-    val unlockType: String? = null, // "level", "friends", "coins"
-    val unlockValue: Int? = null
+    val unlockType: String? = null, // "level", "friends", "coins", "gems", "merges"
+    val unlockValue: Int? = null,
+    val cellType: String = "NORMAL", // NORMAL, GOLDEN, EXPERIENCE, MYSTERY, FROZEN
+    val isSpecialGift: Boolean = false,
+    val specialGiftType: String? = null, // BOMB, MAGNET, RAINBOW, MULTIPLIER, LIGHTNING, CLOCK
+    val effectType: String? = null,
+    val effectValue: Float? = null,
+    val effectExpiresAt: Long? = null
 )

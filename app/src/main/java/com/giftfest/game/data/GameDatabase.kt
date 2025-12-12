@@ -11,7 +11,7 @@ import com.giftfest.game.data.entity.PlayerEntity
 
 @Database(
     entities = [PlayerEntity::class, BoardCellEntity::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class GameDatabase : RoomDatabase() {
@@ -27,7 +27,7 @@ abstract class GameDatabase : RoomDatabase() {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     GameDatabase::class.java,
-                    "gift_fest_database"
+                    "gift_fest_database_v2"
                 )
                     .fallbackToDestructiveMigration()
                     .build()
